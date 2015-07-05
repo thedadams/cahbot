@@ -4,6 +4,10 @@ import (
 	"tgbotapi"
 )
 
+type CAHBot struct {
+    *tgbotapi.BotAPI
+}
+
 type CAHGame struct {
 	ShuffledCards []int
 	Players       map[string]PlayerGameInfo
