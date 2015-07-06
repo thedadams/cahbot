@@ -13,6 +13,11 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	bot.DetectKindMessageRecieved(&update.Message)
 }
 
+// Send a 'There is no game' message
+func (bot *CAHBot) SendNoGameMessage(ChatID int) {
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "There is no game being played here.  Use command '/start' to start a new one."))
+}
+
 // Here we detect the kind of message we received from the user.
 func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 	if m.Text != "" {
@@ -78,26 +83,38 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
 			bot.AddPlayerToGame(m.Chat.ID, m.From)
 		} else {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game being played here.  Use command '/start' to start a new one."))
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "leave":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
 			bot.RemovePlayerFromGame(m.Chat.ID, m.From)
 		} else {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game being played here.  Use command '/start' to start a new one."))
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "mycards":
-		bot.ListCardsForUser(m.Chat.ID, m.From)
+		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
+			bot.ListCardsForUser(m.Chat.ID, m.From)
+		} else {
+			bot.SendNoGameMessage(m.Chat.ID)
+		}
 	case "scores":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
 			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Here are the current scores:\n"+bot.CurrentGames[m.Chat.ID].Scores()))
 		} else {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game in this chat."))
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "gamesettings":
-		bot.SendGameSettings(m.Chat.ID)
+		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
+			bot.SendGameSettings(m.Chat.ID)
+		} else {
+			bot.SendNoGameMessage(m.Chat.ID)
+		}
 	case "changesettings":
-		bot.ChangeGameSettings(m.Chat.ID)
+		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
+			bot.ChangeGameSettings(m.Chat.ID)
+		} else {
+			bot.SendNoGameMessage(m.Chat.ID)
+		}
 	case "feedback":
 		bot.ReceiveFeedback(m.Chat.ID)
 	default:
@@ -132,7 +149,7 @@ func (bot *CAHBot) StopGame(ChatID int) {
 		log.Printf("Deleting a game with Chat ID %v...", ChatID)
 		delete(bot.CurrentGames, ChatID)
 	} else {
-		bot.SendMessage(tgbotapi.NewMessage(ChatID, "There is no game currently running in this chat.  Use command '/start' to start one."))
+		bot.SendNoGameMessage(m.Chat.ID)
 	}
 }
 
