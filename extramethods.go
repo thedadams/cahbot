@@ -117,7 +117,7 @@ func (bot *CAHBot) StartNewGame(ChatID int, User tgbotapi.User) {
 			ShuffledCards[i] = i
 		}
 		shuffle(ShuffledCards)
-		bot.CurrentGames = append(bot.CurrentGames, CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: User}, 0, GameSettings{false, false, false, 7}})
+		bot.CurrentGames[ChatID] = CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: PlayerGameInfo{User0, make([]int, bot.CurrentGames.SettingsNumCardsInHand), false, false}, 0, GameSettings{false, false, false, 7}}}
 		log.Println("Game for Chat ID %v created successfully!", ChatID)
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
 	}
@@ -157,7 +157,7 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User) {
 		bot.SendMessage(ChatID, User.String()+" is already playing.  Use command '/leave' to remove yourself.")
 	} else {
 		log.Printf("Adding %v to the game %v...", User, ChatID)
-		bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, make([]int, bot.CurrentGames.SettingsNumCardsInHand, false, false)}
+		bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, make([]int, bot.CurrentGames.Settings.NumCardsInHand), false, false}
 		bot.SendMessage(ChatID, "Welcome to the game, "+User.String()+"!")
 	}
 }
