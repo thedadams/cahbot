@@ -1,27 +1,27 @@
 package main
 
 import (
-    "cahbot/tgbotapi"
-    "log"
-    "cahbot/secrets"
+	"cahbot/secrets"
+	"cahbot/tgbotapi"
+	"log"
 )
 
 func main() {
-    bot, err := NewCAHBot(secrets.Token)
-    if err != nil {
-        log.Panic(err)
-    }
+	bot, err := NewCAHBot(secrets.Token)
+	if err != nil {
+		log.Panic(err)
+	}
 
-    bot.Debug = true
+	bot.Debug = true
 
-    log.Printf("Authorized on account %s", bot.Self.UserName)
+	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-    u := tgbotapi.NewUpdate(0)
-    u.Timeout = 60
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
 
-    updates, err := bot.UpdatesChan(u)
+	updates, err := bot.UpdatesChan(u)
 
-    for update := range updates {
-        go bot.HandleUpdate(&update)
-    }
+	for update := range updates {
+		go bot.HandleUpdate(&update)
+	}
 }
