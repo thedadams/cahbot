@@ -127,7 +127,7 @@ func (bot *CAHBot) StartNewGame(ChatID int, User tgbotapi.User) {
 func (bot *CAHBot) StopGame(ChatID int) {
 
 	if _, ok := bot.CurrentGames[ChatID]; ok {
-		bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game has been stopped.  The winner was "+bot.CurrentGames[ChatID].Scores()+"."))
+		bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game has been stopped.  Here are the scores:\n"+bot.CurrentGames[ChatID].Scores()+"Thanks for playing!"))
 		log.Printf("Deleting a game with Chat ID %v...", ChatID)
 		delete(bot.CurrentGames, ChatID)
 	} else {
@@ -167,6 +167,10 @@ func (bot *CAHBot) RemovePlayerFromGame(ChatID int, User tgbotapi.User) {
 	if _, ok := bot.CurrentGames[ChatID].Players[User.ID]; ok {
 		log.Printf("Removing %v from the game %v...", User, ChatID)
 		delete(bot.CurrentGames[ChatID].Players, User.ID)
+		if len(bot.CurrentGames[ChatID].Players) == 0 {
+			log.Printf("There are no more players in game %v.  We shall end it.", ChatID)
+			bot.StopGame(ChatID)
+		}
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Thanks for playing, "+User.String()+"!"))
 	} else {
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, User.String()+" is not playing yet.  Use command '/add' to add yourself."))
