@@ -1,4 +1,4 @@
-package cahbot
+package main
 
 import (
 	"math/rand"
