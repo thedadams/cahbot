@@ -19,24 +19,24 @@ func (g CAHGame) Scores() string {
 func (gs GameSettings) String() string {
 	var onOff string
 	if gs.MysteryPlayer {
-		onOff = "on"
+		onOff = "On"
 	} else {
-		onOff = "off"
+		onOff = "Off"
 	}
 	tmp := "Mystery Player - " + onOff + "\n"
 	if gs.TradeInTwoCardsEveryRound {
-		onOff = "on"
+		onOff = "On"
 	} else {
-		onOff = "off"
+		onOff = "Off"
 	}
-	tmp += "Trade in 2 cards every round " + onOff + "\n"
+	tmp += "Trade in 2 cards every round - " + onOff + "\n"
 	if gs.PickWorstToo {
-		onOff = "on"
+		onOff = "On"
 	} else {
-		onOff = "off"
+		onOff = "Off"
 	}
 	tmp += "Pick the worst answer also " + onOff + "\n"
-	tmp += "Each player has " + strconv.Itoa(gs.NumCardsInHand) + "in their hand."
+	tmp += "Each player has " + strconv.Itoa(gs.NumCardsInHand) + " cards in their hand."
 	return tmp + "\n\nUse command '/changesettings' to change these settings."
 }
 
