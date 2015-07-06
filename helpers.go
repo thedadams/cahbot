@@ -22,25 +22,25 @@ func (gs GameSettings) String() string {
 	} else {
 		onOff = "off"
 	}
-	tmp := "Mystery Player - " + If(gs.MysteryPlayer, "on", "off") + "\n"
+	tmp := "Mystery Player - " + onOff + "\n"
 	if gs.TradeInTwoCardsEveryRound {
 		onOff = "on"
 	} else {
 		onOff = "off"
 	}
-	tmp += "Trade in 2 cards every round " + If(gs.TradeInTwoCardsEveryRound, "on", "off") + "\n"
+	tmp += "Trade in 2 cards every round " + onOff + "\n"
 	if gs.PickWorstToo {
 		onOff = "on"
 	} else {
 		onOff = "off"
 	}
-	tmp += "Pick the worst answer also " + If(gs.PickWorstToo, "on", "off") + "\n"
+	tmp += "Pick the worst answer also " + onOff + "\n"
 	if gs.NumCardsInHand {
 		onOff = "on"
 	} else {
 		onOff = "off"
 	}
-	tmp += "Each player has " + gs.NumCardsInHand + "in their hand."
+	tmp += "Each player has " + string(gs.NumCardsInHand) + "in their hand."
 	return tmp
 }
 
