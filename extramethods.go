@@ -3,6 +3,7 @@ package main
 import (
 	"cahbot/tgbotapi"
 	"log"
+	"strconv"
 	"strings"
 )
 
@@ -140,7 +141,7 @@ func (bot *CAHBot) ListCardsForUser(ChatID int, User tgbotapi.User) {
 }
 
 func (bot *CAHBot) SendGameSettings(ChatID int) {
-
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "Game settings: \n"+bot.CurrentGames[ChatID].Settings.String()))
 }
 
 func (bot *CAHBot) ChangeGameSettings(ChatID int) {
@@ -165,7 +166,7 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User) {
 // Remove a player from a game if the player is playing.
 func (bot *CAHBot) RemovePlayerFromGame(ChatID int, User tgbotapi.User) {
 	if _, ok := bot.CurrentGames[ChatID].Players[User.ID]; ok {
-		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Thanks for playing, "+User.String()+"!  You had collected "+string(bot.CurrentGames[ChatID].Players[User.ID].Points)+"."))
+		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Thanks for playing, "+User.String()+"!  You collected "+strconv.Itoa(bot.CurrentGames[ChatID].Players[User.ID].Points)+"."))
 		log.Printf("Removing %v from the game %v...", User, ChatID)
 		delete(bot.CurrentGames[ChatID].Players, User.ID)
 		if len(bot.CurrentGames[ChatID].Players) == 0 {

@@ -9,7 +9,7 @@ import (
 func (g CAHGame) Scores() string {
 	var str string = ""
 	for _, value := range g.Players {
-		str += value.Player.String() + " - " + string(value.Points) + "\n"
+		str += value.Player.String() + " - " + strconv.Itoa(value.Points) + "\n"
 	}
 	return str
 }
@@ -35,8 +35,8 @@ func (gs GameSettings) String() string {
 		onOff = "off"
 	}
 	tmp += "Pick the worst answer also " + onOff + "\n"
-	tmp += "Each player has " + string(gs.NumCardsInHand) + "in their hand."
-	return tmp
+	tmp += "Each player has " + strconv.Itoa(gs.NumCardsInHand) + "in their hand."
+	return tmp + "\n\nUse command '/changesettings' to change these settings."
 }
 
 // Shuffle an array of ints.
