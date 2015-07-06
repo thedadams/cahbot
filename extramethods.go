@@ -98,7 +98,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	case "changesettings":
 		bot.ChangeGameSettings(m.Chat.ID)
 	case "feedback":
-		bot.ReceiveFeedback()
+		bot.ReceiveFeedback(m.Chat.ID)
 	default:
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Sorry, I don't know that command."))
 	}
@@ -108,9 +108,9 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 func (bot *CAHBot) StartNewGame(ChatID int) {
 	// If there is already a game being played, we do not create another one.
 	if _, ok := bot.CurrentGames[ChatID]; ok {
-		bot.SendMessage(tgbotapi.NewMessage(ChatID), "There is already a game being player here.  Use command '/stop' to end the previous game.")
+		bot.SendMessage(tgbotapi.NewMessage(ChatID, "There is already a game being player here.  Use command '/stop' to end the previous game."))
 	} else {
-		log.Println("Starting a new game for Chat ID " + ChatID + ".")
+		log.Printf("Starting a new game for Chat ID %v.", ChatID)
 		// Get the keys for the All Cards map.
 		ShuffledCards := make([]int, len(bot.AllCards))
 		for i := 0; i < len(ShuffledCards); i++ {

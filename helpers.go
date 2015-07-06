@@ -6,7 +6,7 @@ import (
 )
 
 // Get the scores for a game.
-func (g *CAHGame) Scores() string {
+func (g CAHGame) Scores() string {
 	var str string = ""
 	for key, value := range g.Players {
 		str += value[Player].String() + " - " + string(value[Points])
