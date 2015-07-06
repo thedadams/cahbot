@@ -10,9 +10,9 @@ import (
 // This is the starting point for handling an update from chat.
 func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	messageType := bot.DetectKindMessageRecieved(&update.Message)
-	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messagType)
+	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
-		bot.ProccessCommand(&update)
+		bot.ProccessCommand(&update.Message)
 	}
 }
 
@@ -151,7 +151,7 @@ func (bot *CAHBot) StopGame(ChatID int) {
 		log.Printf("Deleting a game with Chat ID %v...", ChatID)
 		delete(bot.CurrentGames, ChatID)
 	} else {
-		bot.SendNoGameMessage(m.Chat.ID)
+		bot.SendNoGameMessage(ChatID)
 	}
 }
 
