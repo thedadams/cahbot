@@ -154,11 +154,13 @@ func (bot *CAHBot) ReceiveFeedback(ChatID int) {
 // Add a player to a game if the player is not playing.
 func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User) {
 	if _, ok := bot.CurrentGames[ChatID].Players[User.ID]; ok {
-		bot.SendMessage(ChatID, User.String()+" is already playing.  Use command '/leave' to remove yourself.")
+		message := User.String() + " is already playing.  Use command '/leave' to remove yourself."
+		bot.SendMessage(ChatID, message)
 	} else {
 		log.Printf("Adding %v to the game %v...", User, ChatID)
 		bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), false, false}
-		bot.SendMessage(ChatID, "Welcome to the game, "+User.String()+"!")
+		message := "Welcome to the game, " + User.String() + "!"
+		bot.SendMessage(ChatID, message)
 	}
 }
 
@@ -167,8 +169,10 @@ func (bot *CAHBot) RemovePlayerFromGame(ChatID int, User tgbotapi.User) {
 	if _, ok := bot.CurrentGames[ChatID].Players[User.ID]; ok {
 		log.Printf("Removing %v from the game %v...", User, ChatID)
 		delete(bot.CurrentGames[ChatID].Players, User.ID)
-		bot.SendMessage(ChatID, "Thanks for playing, "+User.String()+"!")
+		message := "Thanks for playing, " + User.String() + "!"
+		bot.SendMessage(ChatID, message)
 	} else {
-		bot.SendMessage(ChatID, User.String()+" is not playing yet.  Use command '/add' to add yourself.")
+		message := User.String() + " is not playing yet.  Use command '/add' to add yourself."
+		bot.SendMessage(ChatID, message)
 	}
 }
