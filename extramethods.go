@@ -2,7 +2,7 @@ package main
 
 import (
     "strings"
-    "tgbotapi"
+    "cahbot/tgbotapi"
     "log"
 )
 

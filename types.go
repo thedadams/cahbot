@@ -1,7 +1,7 @@
 package main
 
 import (
-	"tgbotapi"
+	"cahbot/tgbotapi"
 )
 
 // A wrapper for tgbotapi. We need this wrapper to add new methods.
