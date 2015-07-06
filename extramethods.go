@@ -9,8 +9,11 @@ import (
 
 // This is the starting point for handling an update from chat.
 func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
-	log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-	bot.DetectKindMessageRecieved(&update.Message)
+	messageType := bot.DetectKindMessageRecieved(&update.Message)
+	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messagType)
+	if messageType == "command" {
+		bot.ProccessCommand(&update)
+	}
 }
 
 // Send a 'There is no game' message
@@ -22,7 +25,6 @@ func (bot *CAHBot) SendNoGameMessage(ChatID int) {
 func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 	if m.Text != "" {
 		if strings.HasPrefix(m.Text, "/") {
-			bot.ProccessCommand(m)
 			return "command"
 		} else {
 			return "message"
