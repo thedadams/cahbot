@@ -3,10 +3,11 @@ package main
 import (
     "cahbot/tgbotapi"
     "log"
+    "cahbot/secrets"
 )
 
 func main() {
-    bot, err := NewCAHBot(Token)
+    bot, err := NewCAHBot(secrets.Token)
     if err != nil {
         log.Panic(err)
     }
