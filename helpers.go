@@ -26,7 +26,7 @@ func (gs GameSettings) String() string {
 // Shuffle an array of ints.
 func shuffle(arr []int) {
 	t := time.Now()
-	rand.Seed(int64(t.Nanosecond())) // no shuffling without this line
+	rand.Seed(int64(t.Nanosecond()))
 
 	for i := len(arr) - 1; i > 0; i-- {
 		j := rand.Intn(i)
