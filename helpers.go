@@ -9,7 +9,7 @@ import (
 func (g CAHGame) Scores() string {
 	var str string = ""
 	for key, value := range g.Players {
-		str += value[Player].String() + " - " + string(value[Points])
+		str += value.Player.String() + " - " + string(value.Points)
 	}
 	return str
 }
