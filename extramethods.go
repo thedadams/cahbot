@@ -77,26 +77,26 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
 			bot.AddPlayerToGame(m.Chat.ID, m.From)
 		} else {
-			bot.sendMessage(tgbotapi.NewMessage(m.Chat.ID), "There is no game being played here.  Use command '/start' to start a new one.")
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game being played here.  Use command '/start' to start a new one."))
 		}
 	case "leave":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
 			bot.RemovePlayerFromGame(m.Chat.ID, m.From)
 		} else {
-			bot.sendMessage(tgbotapi.NewMessage(m.Chat.ID), "There is no game being played here.  Use command '/start' to start a new one.")
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game being played here.  Use command '/start' to start a new one."))
 		}
 	case "mycards":
-		bot.ListCardsForUser(m.From)
+		bot.ListCardsForUser(m.Chat.ID, m.From)
 	case "scores":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			bot.SendMessage(tgbotapoi.NewMessage(m.Chat.ID, "Here are the current scores:\n"+(&bot.CurrentGames[m.Chat.ID]).Scores()))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Here are the current scores:\n"+bot.CurrentGames[m.Chat.ID].Scores()))
 		} else {
-			bot.SendMessage(tgbotapoi.NewMessage(m.Chat.ID, "There is no game in this chat."))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game in this chat."))
 		}
 	case "gamesettings":
 		bot.SendGameSettings(m.Chat.ID)
 	case "changesettings":
-		bot.ChangeSettings(m.Chat.ID)
+		bot.ChangeGameSettings(m.Chat.ID)
 	case "feedback":
 		bot.ReceiveFeedback()
 	default:
@@ -134,7 +134,7 @@ func (bot *CAHBot) StopGame(ChatID int) {
 	}
 }
 
-func (bot *CAHBot) ListCardsForUser(ChatID int) {
+func (bot *CAHBot) ListCardsForUser(ChatID int, User User) {
 
 }
 
@@ -146,7 +146,7 @@ func (bot *CAHBot) ChangeGameSettings(ChatID int) {
 
 }
 
-func (bot *CAHBot) ReceiveFeeback(ChatID int) {
+func (bot *CAHBot) ReceiveFeedback(ChatID int) {
 
 }
 
