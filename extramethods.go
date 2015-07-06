@@ -117,7 +117,7 @@ func (bot *CAHBot) StartNewGame(ChatID int, User tgbotapi.User) {
 			ShuffledCards[i] = i
 		}
 		shuffle(ShuffledCards)
-		bot.CurrentGames[ChatID] = CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), false, false}, 0, GameSettings{false, false, false, 7}}}
+		bot.CurrentGames[ChatID] = CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), false, false}}, 0, GameSettings{false, false, false, 7}}
 		log.Println("Game for Chat ID %v created successfully!", ChatID)
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
 	}

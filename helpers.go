@@ -35,11 +35,6 @@ func (gs GameSettings) String() string {
 		onOff = "off"
 	}
 	tmp += "Pick the worst answer also " + onOff + "\n"
-	if gs.NumCardsInHand {
-		onOff = "on"
-	} else {
-		onOff = "off"
-	}
 	tmp += "Each player has " + string(gs.NumCardsInHand) + "in their hand."
 	return tmp
 }
