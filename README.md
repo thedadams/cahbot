@@ -15,7 +15,7 @@ The following commands are in progress:
 - '/mycards' -- Shows the user the cards they are "holding."
 - '/changesettings' -- Change the settings of the current game.
 
-The Telegram Bot functionality comes from [Telegram Bot API](https://github.com/thedadams/telegram-bot-api), another of my repositories.  Most of the bot functionality is complete; the game play is left to code.
+The Telegram Bot functionality comes from [Telegram Bot API](https://github.com/thedadams/telegram-bot-api), another of my repositories.  Most of the bot functionality is complete; the game play is left to code.  For example, creating a game does not deal cards.
 
 The card data was taken from https://github.com/samurailink3/hangouts-against-humanity, which is offered under the [Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License](http://creativecommons.org/licenses/by-nc-sa/3.0/deed.en_US).  The card data remains under that license.
 
