@@ -26,6 +26,7 @@ type CAHGame struct {
 	Players       map[int]PlayerGameInfo
 	CardTzarIndex int
 	Settings      GameSettings
+	HasStarted    bool
 }
 
 // Struct that represents a player in a game.
@@ -35,6 +36,7 @@ type PlayerGameInfo struct {
 	Cards           []int
 	IsCardTzar      bool
 	IsMysteryPlayer bool
+	WaitingForCard  bool
 }
 
 // Settings for game.
