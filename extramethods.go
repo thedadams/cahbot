@@ -176,7 +176,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) {
 		ShuffledAnswerCards[i] = strconv.Itoa(i)
 	}
 	shuffle(ShuffledAnswerCards)
-	bot.CurrentGames[ChatID] = CAHGame{ShuffledQuestionCards, ShuffledAnswerCards, make(map[int]PlayerGameInfo), []int{User.ID}, 0, -1, GameSettings{false, false, false, 7}, false}
+	bot.CurrentGames[ChatID] = CAHGame{ShuffledQuestionCards, ShuffledAnswerCards, len(ShuffledQuestionCards) - 1, len(ShuffledAnswerCards) - 1, make(map[int]PlayerGameInfo), []int{User.ID}, 0, -1, GameSettings{false, false, false, 7}, false}
 	log.Printf("Game for Chat ID %v created successfully!%v", ChatID)
 	bot.AddPlayerToGame(ChatID, User, true)
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
@@ -256,10 +256,9 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MakeTzar bool
 		} else {
 			log.Printf("Adding %v to the game %v...", User, ChatID)
 			game := bot.CurrentGames[ChatID]
-			PlayerHand := make([]string, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
-			// TODO: YOU ARE IN THE MIDDLE OF ADDING CARDS TO THE PLAYERS HAND.
-			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, false, false}
-			// This is a workaround because go assignments inside a map don't work.
+			PlayerHand := make([]string, 0, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
+			DealPlayerHand(game, PlayerHand)
+			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, false}
 			game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder, User.ID)
 			bot.CurrentGames[ChatID] = game
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))

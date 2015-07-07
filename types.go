@@ -30,6 +30,8 @@ func NewCAHBot(token string) (*CAHBot, error) {
 type CAHGame struct {
 	ShuffledQuestionCards []string
 	ShuffledAnswerCards   []string
+	NumQCardsLeft         int
+	NumACardsLeft         int
 	Players               map[int]PlayerGameInfo
 	CardTzarOrder         []int
 	CardTzarIndex         int
@@ -40,12 +42,11 @@ type CAHGame struct {
 
 // Struct that represents a player in a game.
 type PlayerGameInfo struct {
-	Player          tgbotapi.User
-	Points          int
-	Cards           []string
-	IsCardTzar      bool
-	IsMysteryPlayer bool
-	WaitingForCard  bool
+	Player         tgbotapi.User
+	Points         int
+	Cards          []string
+	IsCardTzar     bool
+	WaitingForCard bool
 }
 
 // Settings for game.

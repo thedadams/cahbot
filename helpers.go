@@ -51,7 +51,7 @@ func shuffle(arr []string) {
 	}
 }
 
-// This method checks to see if we have answer cards from all the players.
+// This function checks to see if we have answer cards from all the players.
 func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
 	for _, value := range Players {
 		if !value.IsCardTzar && value.WaitingForCard {
@@ -59,4 +59,27 @@ func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
 		}
 	}
 	return true
+}
+
+// This function will deal a player's hand or add cards to the player's hand
+func DealPlayersHand(Game CAHGame, Hand []string) {
+	for len(Hand) < Game.Settings.NumCardsInHand {
+		append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
+		Game.NumACardsLeft -= 1
+		if Game.NumACardsLeft == -1 {
+			ReshuffleACards(Game)
+		}
+	}
+}
+
+//This function reshuffles the answer cards of a game.
+func ReshuffleACards(Game CAHGame) {
+	shuffle(Game.ShuffledAnswerCards)
+	Game.NumACardsLeft = len(Game.ShuffledAnswerCards) - 1
+}
+
+//This function reshuffles the question cards of a game.
+func ReshuffleQCards(Game CAHGame) {
+	shuffle(Game.ShuffledQuestionCards)
+	Game.NumQCardsLeft = len(Game.ShuffledQuestionCards) - 1
 }
