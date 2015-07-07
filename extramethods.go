@@ -79,6 +79,7 @@ func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 // and call the appropriate method.
 func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	log.Printf("Processing command....")
+	// Get the command.
 	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
 	case "create":
 		if value, ok := bot.CurrentGames[m.Chat.ID]; ok {
@@ -170,7 +171,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) {
 		ShuffledCards[i] = i
 	}
 	shuffle(ShuffledCards)
-	bot.CurrentGames[ChatID] = CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), true, false, false}}, User.ID, GameSettings{false, false, false, 7}, false}
+	bot.CurrentGames[ChatID] = CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), true, false, false}}, []int{User.ID}, 0, GameSettings{false, false, false, 7}, false}
 	log.Printf("Game for Chat ID %v created successfully!%v", ChatID)
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
 }

@@ -24,6 +24,7 @@ func NewCAHBot(token string) (*CAHBot, error) {
 type CAHGame struct {
 	ShuffledCards []int
 	Players       map[int]PlayerGameInfo
+	CardTzarOrder []int
 	CardTzarID    int
 	Settings      GameSettings
 	HasStarted    bool
