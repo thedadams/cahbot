@@ -40,8 +40,8 @@ func (gs GameSettings) String() string {
 	return tmp + "\n\nUse command '/changesettings' to change these settings."
 }
 
-// Shuffle an array of ints.
-func shuffle(arr []int) {
+// Shuffle an array of strings.
+func shuffle(arr []string) {
 	t := time.Now()
 	rand.Seed(int64(t.Nanosecond()))
 

@@ -1,14 +1,17 @@
 package main
 
 import (
+	"cahbot/secrets"
 	"cahbot/tgbotapi"
+	"encoding/json"
 )
 
 // A wrapper for tgbotapi. We need this wrapper to add new methods.
 type CAHBot struct {
 	*tgbotapi.BotAPI
-	CurrentGames map[int]CAHGame
-	AllCards     map[int]map[string]string
+	CurrentGames     map[int]CAHGame
+	AllQuestionCards map[string]interface{}
+	AllAnswerCards   map[string]interface{}
 }
 
 // This creates a new CAHBot, which is basically a wrapper for tgbotapi.BotAPI.
@@ -16,25 +19,30 @@ type CAHBot struct {
 func NewCAHBot(token string) (*CAHBot, error) {
 	GenericBot, err := tgbotapi.NewBotAPI(token)
 	// Need to get the card data
-	Cards := make(map[int]map[string]string)
-	return &CAHBot{GenericBot, make(map[int]CAHGame), Cards}, err
+	var AllQuestionCards map[string]interface{}
+	_ = json.Unmarshal(secrets.AllQuestions, &AllQuestionCards)
+	var AllAnswerCards map[string]interface{}
+	_ = json.Unmarshal(secrets.AllAnswers, &AllAnswerCards)
+	return &CAHBot{GenericBot, make(map[int]CAHGame), AllQuestionCards, AllAnswerCards}, err
 }
 
 // Struct that represents an instance of a game.
 type CAHGame struct {
-	ShuffledCards []int
-	Players       map[int]PlayerGameInfo
-	CardTzarOrder []int
-	CardTzarID    int
-	Settings      GameSettings
-	HasStarted    bool
+	ShuffledQuestionCards []string
+	ShuffledAnswerCards   []string
+	Players               map[int]PlayerGameInfo
+	CardTzarOrder         []int
+	CardTzarIndex         int
+	QuestionCard          int
+	Settings              GameSettings
+	HasStarted            bool
 }
 
 // Struct that represents a player in a game.
 type PlayerGameInfo struct {
 	Player          tgbotapi.User
 	Points          int
-	Cards           []int
+	Cards           []string
 	IsCardTzar      bool
 	IsMysteryPlayer bool
 	WaitingForCard  bool

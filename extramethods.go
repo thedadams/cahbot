@@ -115,7 +115,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		}
 	case "join":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			bot.AddPlayerToGame(m.Chat.ID, m.From)
+			bot.AddPlayerToGame(m.Chat.ID, m.From, false)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -151,7 +151,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		}
 	case "whoistzar":
 		if value, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card Tzar is "+value.Players[value.CardTzarID].Player.String()+"."))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card Tzar is "+value.Players[value.CardTzarOrder[value.CardTzarIndex]].Player.String()+"."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -166,13 +166,19 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) {
 	log.Printf("Creating a new game for Chat ID %v.", ChatID)
 	// Get the keys for the All Cards map.
-	ShuffledCards := make([]int, len(bot.AllCards))
-	for i := 0; i < len(ShuffledCards); i++ {
-		ShuffledCards[i] = i
+	ShuffledQuestionCards := make([]string, len(bot.AllQuestionCards))
+	for i := 0; i < len(ShuffledQuestionCards); i++ {
+		ShuffledQuestionCards[i] = strconv.Itoa(i)
 	}
-	shuffle(ShuffledCards)
-	bot.CurrentGames[ChatID] = CAHGame{ShuffledCards, map[int]PlayerGameInfo{User.ID: PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), true, false, false}}, []int{User.ID}, 0, GameSettings{false, false, false, 7}, false}
+	shuffle(ShuffledQuestionCards)
+	ShuffledAnswerCards := make([]string, len(bot.AllAnswerCards))
+	for i := 0; i < len(ShuffledAnswerCards); i++ {
+		ShuffledAnswerCards[i] = strconv.Itoa(i)
+	}
+	shuffle(ShuffledAnswerCards)
+	bot.CurrentGames[ChatID] = CAHGame{ShuffledQuestionCards, ShuffledAnswerCards, make(map[int]PlayerGameInfo), []int{User.ID}, 0, -1, GameSettings{false, false, false, 7}, false}
 	log.Printf("Game for Chat ID %v created successfully!%v", ChatID)
+	bot.AddPlayerToGame(ChatID, User, true)
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
 }
 
@@ -184,8 +190,8 @@ func (bot *CAHBot) StartGame(ChatID int) {
 	tmp.HasStarted = true
 	bot.CurrentGames[ChatID] = tmp
 	if DoWeHaveAllAnswers(bot.CurrentGames[ChatID].Players) {
-		log.Printf("Asking the Card Tzar, %v, to pick the best and/or worse answer.", bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarID].Player)
-		bot.AskCardTzarForChoice(ChatID, bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarID])
+		log.Printf("Asking the Card Tzar, %v, to pick the best and/or worse answer.", bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarOrder[bot.CurrentGames[ChatID].CardTzarIndex]].Player)
+		bot.AskCardTzarForChoice(ChatID, bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarIndex])
 	} else {
 		for _, value := range bot.CurrentGames[ChatID].Players {
 			if !value.IsCardTzar && value.WaitingForCard {
@@ -213,6 +219,7 @@ func (bot *CAHBot) PauseGame(ChatID int) {
 	tmp := bot.CurrentGames[ChatID]
 	tmp.HasStarted = false
 	bot.CurrentGames[ChatID] = tmp
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game has been paused.  Use command '/resume' to resume."))
 }
 
 // This method stops and ends an already created game.
@@ -240,7 +247,7 @@ func (bot *CAHBot) ReceiveFeedback(ChatID int) {
 }
 
 // Add a player to a game if the player is not playing.
-func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User) {
+func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MakeTzar bool) {
 	if len(bot.CurrentGames[ChatID].Players) > 9 {
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Player limit of 10 reached, we can not add any more players."))
 	} else {
@@ -248,7 +255,13 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User) {
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, User.String()+" is already playing.  Use command '/leave' to remove yourself."))
 		} else {
 			log.Printf("Adding %v to the game %v...", User, ChatID)
-			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, make([]int, bot.CurrentGames[ChatID].Settings.NumCardsInHand), false, false, false}
+			game := bot.CurrentGames[ChatID]
+			PlayerHand := make([]string, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
+			// TODO: YOU ARE IN THE MIDDLE OF ADDING CARDS TO THE PLAYERS HAND.
+			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, false, false}
+			// This is a workaround because go assignments inside a map don't work.
+			game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder, User.ID)
+			bot.CurrentGames[ChatID] = game
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))
 		}
 	}
@@ -259,6 +272,18 @@ func (bot *CAHBot) RemovePlayerFromGame(ChatID int, User tgbotapi.User) {
 	if value, ok := bot.CurrentGames[ChatID].Players[User.ID]; ok {
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Thanks for playing, "+User.String()+"!  You collected "+strconv.Itoa(value.Points)+" cards."))
 		log.Printf("Removing %v from the game %v...", User, ChatID)
+		for i := 0; i < len(bot.CurrentGames[ChatID].CardTzarOrder); i++ {
+			if bot.CurrentGames[ChatID].CardTzarOrder[i] == User.ID {
+				// This is a workaround because go assignments inside a map don't work.
+				game := bot.CurrentGames[ChatID]
+				game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder[:i], bot.CurrentGames[ChatID].CardTzarOrder[i+1:]...)
+				bot.CurrentGames[ChatID] = game
+				break
+			}
+		}
+		if bot.CurrentGames[ChatID].Players[User.ID].IsCardTzar {
+			bot.MoveCardTzar(ChatID)
+		}
 		delete(bot.CurrentGames[ChatID].Players, User.ID)
 		if len(bot.CurrentGames[ChatID].Players) == 0 {
 			log.Printf("There are no more players in game %v.  We shall end it.", ChatID)
@@ -268,4 +293,11 @@ func (bot *CAHBot) RemovePlayerFromGame(ChatID int, User tgbotapi.User) {
 	} else {
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, User.String()+" is not playing yet.  Use command '/add' to add yourself."))
 	}
+}
+
+func (bot *CAHBot) MoveCardTzar(ChatID int) {
+	// Have to do the stupid cannot assign workaround again.
+	game := bot.CurrentGames[ChatID]
+	game.CardTzarIndex = (game.CardTzarIndex + 1) % len(game.CardTzarOrder)
+	bot.CurrentGames[ChatID] = game
 }
