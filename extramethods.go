@@ -194,7 +194,7 @@ func (bot *CAHBot) StartGame(ChatID int) {
 		bot.AskCardTzarForChoice(ChatID, bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarIndex])
 	} else {
 		for _, value := range bot.CurrentGames[ChatID].Players {
-			if !value.IsCardTzar && value.WaitingForCard {
+			if !value.IsCardTzar && value.CardBeingPlayed == "" {
 				log.Printf("Asking %v for an answer card.", value)
 				bot.AskForCardFromPlayer(ChatID, value)
 			}
@@ -258,7 +258,7 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MakeTzar bool
 			game := bot.CurrentGames[ChatID]
 			PlayerHand := make([]string, 0, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
 			DealPlayerHand(game, PlayerHand)
-			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, false}
+			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, ""}
 			game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder, User.ID)
 			bot.CurrentGames[ChatID] = game
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))

@@ -42,11 +42,11 @@ type CAHGame struct {
 
 // Struct that represents a player in a game.
 type PlayerGameInfo struct {
-	Player         tgbotapi.User
-	Points         int
-	Cards          []string
-	IsCardTzar     bool
-	WaitingForCard bool
+	Player          tgbotapi.User
+	Points          int
+	Cards           []string
+	IsCardTzar      bool
+	CardBeingPlayed string
 }
 
 // Settings for game.

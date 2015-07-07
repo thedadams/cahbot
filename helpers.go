@@ -54,7 +54,7 @@ func shuffle(arr []string) {
 // This function checks to see if we have answer cards from all the players.
 func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
 	for _, value := range Players {
-		if !value.IsCardTzar && value.WaitingForCard {
+		if !value.IsCardTzar && value.CardBeingPlayed == "" {
 			return false
 		}
 	}
