@@ -19,7 +19,7 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 // Send a 'There is no game' message
 func (bot *CAHBot) SendNoGameMessage(ChatID int) {
 	log.Printf("Telling them there is no game right now.")
-	bot.SendMessage(tgbotapi.NewMessage(ChatID, "There is no game being played here.  Use command '/create' to start a new one."))
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "There is no game being played here.  Use command '/create' to create a new one."))
 }
 
 // Here we detect the kind of message we received from the user.
@@ -81,9 +81,13 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	log.Printf("Processing command....")
 	// Get the command.
 	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
+	case "start":
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  To see all available commands, use '/help'."))
+	case "help":
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "A help message should go here."))
 	case "create":
 		if value, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			if value.HasStarted {
+			if value.HasBegun {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is already a game created here.  Use command '/stop' to end the previous game."))
 			} else {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is already a game created here.  Use command '/stop' to end the previous game or '/resume' to resume."))
@@ -91,9 +95,9 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		} else {
 			bot.CreateNewGame(m.Chat.ID, m.From)
 		}
-	case "start", "resume":
+	case "begin", "resume":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			bot.StartGame(m.Chat.ID)
+			bot.BeginGame(m.Chat.ID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -105,7 +109,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		}
 	case "pause":
 		if value, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			if value.HasStarted {
+			if value.HasBegun {
 				bot.PauseGame(m.Chat.ID)
 			} else {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current game is already paused.  Use command '/resume' to resume it."))
@@ -137,7 +141,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
-	case "gamesettings":
+	case "settings":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
 			bot.SendGameSettings(m.Chat.ID)
 		} else {
@@ -162,39 +166,39 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	}
 }
 
-// This method starts a new game.
+// This method creates a new game.
 func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) {
 	log.Printf("Creating a new game for Chat ID %v.", ChatID)
 	// Get the keys for the All Cards map.
-	ShuffledQuestionCards := make([]string, len(bot.AllQuestionCards))
+	ShuffledQuestionCards := make([]int, len(bot.AllQuestionCards))
 	for i := 0; i < len(ShuffledQuestionCards); i++ {
-		ShuffledQuestionCards[i] = strconv.Itoa(i)
+		ShuffledQuestionCards[i] = i
 	}
 	shuffle(ShuffledQuestionCards)
-	ShuffledAnswerCards := make([]string, len(bot.AllAnswerCards))
+	ShuffledAnswerCards := make([]int, len(bot.AllAnswerCards))
 	for i := 0; i < len(ShuffledAnswerCards); i++ {
-		ShuffledAnswerCards[i] = strconv.Itoa(i)
+		ShuffledAnswerCards[i] = i
 	}
 	shuffle(ShuffledAnswerCards)
-	bot.CurrentGames[ChatID] = CAHGame{ShuffledQuestionCards, ShuffledAnswerCards, len(ShuffledQuestionCards) - 1, len(ShuffledAnswerCards) - 1, make(map[int]PlayerGameInfo), []int{User.ID}, 0, -1, GameSettings{false, false, false, 7}, false}
+	bot.CurrentGames[ChatID] = CAHGame{ChatID, ShuffledQuestionCards, ShuffledAnswerCards, len(ShuffledQuestionCards) - 1, len(ShuffledAnswerCards) - 1, make(map[int]PlayerGameInfo), []int{User.ID}, 0, -1, GameSettings{false, false, false, 7}, false, false}
 	log.Printf("Game for Chat ID %v created successfully!%v", ChatID)
 	bot.AddPlayerToGame(ChatID, User, true)
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
 }
 
-// This method starts an already created game.
-func (bot *CAHBot) StartGame(ChatID int) {
+// This method begins an already created game.
+func (bot *CAHBot) BeginGame(ChatID int) {
 	log.Printf("Starting game for Chat ID %v.", ChatID)
-	// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasStarted = true.  This is a workaround.
+	// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasBegun = true.  This is a workaround.
 	tmp := bot.CurrentGames[ChatID]
-	tmp.HasStarted = true
+	tmp.HasBegun = true
 	bot.CurrentGames[ChatID] = tmp
 	if DoWeHaveAllAnswers(bot.CurrentGames[ChatID].Players) {
 		log.Printf("Asking the Card Tzar, %v, to pick the best and/or worse answer.", bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarOrder[bot.CurrentGames[ChatID].CardTzarIndex]].Player)
-		bot.AskCardTzarForChoice(ChatID, bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarIndex])
+		bot.GetQuestionCard(ChatID, true)
 	} else {
 		for _, value := range bot.CurrentGames[ChatID].Players {
-			if !value.IsCardTzar && value.CardBeingPlayed == "" {
+			if !value.IsCardTzar && value.CardBeingPlayed == -1 {
 				log.Printf("Asking %v for an answer card.", value)
 				bot.AskForCardFromPlayer(ChatID, value)
 			}
@@ -208,8 +212,29 @@ func (bot *CAHBot) AskForCardFromPlayer(ChatID int, Player PlayerGameInfo) {
 }
 
 // This method asks the Card Tzar to make a choice.
-func (bot *CAHBot) AskCardTzarForChoice(ChatID int, Player PlayerGameInfo) {
+func (bot *CAHBot) GetQuestionCard(ChatID int, display bool) {
+	Game := bot.CurrentGames[ChatID]
+	Game.QuestionCard = Game.ShuffledQuestionCards[Game.NumQCardsLeft]
+	Game.NumQCardsLeft -= 1
+	Game.WaitingForAnswers = true
+	log.Printf("The question card is %v: %v", Game.QuestionCard, bot.AllQuestionCards[Game.QuestionCard])
+	if Game.NumQCardsLeft == -1 {
+		log.Printf("Reshuffling question cards...")
+		ReshuffleQCards(Game)
+	}
+	// This is the dumb Go map bug again.
+	bot.CurrentGames[ChatID] = Game
+	if display {
+		bot.DisplayQuestionCard(Game.ChatID)
+	}
+}
 
+// Sends a message show the players the question card.
+func (bot *CAHBot) DisplayQuestionCard(ChatID int) {
+	log.Printf("Sending question care to game with ID %v...", ChatID)
+	var message string = "Here is the question card:\n"
+	message += bot.AllQuestionCards[bot.CurrentGames[ChatID].QuestionCard].Text
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, message))
 }
 
 // This method pauses a started game.
@@ -217,7 +242,7 @@ func (bot *CAHBot) PauseGame(ChatID int) {
 	log.Printf("Pausing game for Chat %v...", ChatID)
 	// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasStarted = false.  This is a workaround.
 	tmp := bot.CurrentGames[ChatID]
-	tmp.HasStarted = false
+	tmp.HasBegun = false
 	bot.CurrentGames[ChatID] = tmp
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game has been paused.  Use command '/resume' to resume."))
 }
@@ -256,9 +281,9 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MakeTzar bool
 		} else {
 			log.Printf("Adding %v to the game %v...", User, ChatID)
 			game := bot.CurrentGames[ChatID]
-			PlayerHand := make([]string, 0, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
+			PlayerHand := make([]int, 0, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
+			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, -1}
 			DealPlayerHand(game, PlayerHand)
-			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, ""}
 			game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder, User.ID)
 			bot.CurrentGames[ChatID] = game
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))
@@ -295,8 +320,7 @@ func (bot *CAHBot) RemovePlayerFromGame(ChatID int, User tgbotapi.User) {
 }
 
 func (bot *CAHBot) MoveCardTzar(ChatID int) {
-	// Have to do the stupid cannot assign workaround again.
-	game := bot.CurrentGames[ChatID]
-	game.CardTzarIndex = (game.CardTzarIndex + 1) % len(game.CardTzarOrder)
-	bot.CurrentGames[ChatID] = game
+	Game := bot.CurrentGames[ChatID]
+	Game.CardTzarIndex = (Game.CardTzarIndex + 1) % len(Game.CardTzarOrder)
+	bot.CurrentGames[ChatID] = Game
 }

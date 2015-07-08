@@ -4,14 +4,15 @@ import (
 	"cahbot/secrets"
 	"cahbot/tgbotapi"
 	"encoding/json"
+	"log"
 )
 
 // A wrapper for tgbotapi. We need this wrapper to add new methods.
 type CAHBot struct {
 	*tgbotapi.BotAPI
 	CurrentGames     map[int]CAHGame
-	AllQuestionCards map[string]interface{}
-	AllAnswerCards   map[string]interface{}
+	AllQuestionCards []QuestionCard
+	AllAnswerCards   []AnswerCard
 }
 
 // This creates a new CAHBot, which is basically a wrapper for tgbotapi.BotAPI.
@@ -19,17 +20,24 @@ type CAHBot struct {
 func NewCAHBot(token string) (*CAHBot, error) {
 	GenericBot, err := tgbotapi.NewBotAPI(token)
 	// Need to get the card data
-	var AllQuestionCards map[string]interface{}
-	_ = json.Unmarshal(secrets.AllQuestions, &AllQuestionCards)
-	var AllAnswerCards map[string]interface{}
-	_ = json.Unmarshal(secrets.AllAnswers, &AllAnswerCards)
+	var AllQuestionCards []QuestionCard
+	err = json.Unmarshal(secrets.AllQuestions, &AllQuestionCards)
+	if err != nil {
+		log.Printf("%v", err)
+	}
+	var AllAnswerCards []AnswerCard
+	err = json.Unmarshal(secrets.AllAnswers, &AllAnswerCards)
+	if err != nil {
+		log.Printf("%v", err)
+	}
 	return &CAHBot{GenericBot, make(map[int]CAHGame), AllQuestionCards, AllAnswerCards}, err
 }
 
 // Struct that represents an instance of a game.
 type CAHGame struct {
-	ShuffledQuestionCards []string
-	ShuffledAnswerCards   []string
+	ChatID                int
+	ShuffledQuestionCards []int
+	ShuffledAnswerCards   []int
 	NumQCardsLeft         int
 	NumACardsLeft         int
 	Players               map[int]PlayerGameInfo
@@ -37,16 +45,17 @@ type CAHGame struct {
 	CardTzarIndex         int
 	QuestionCard          int
 	Settings              GameSettings
-	HasStarted            bool
+	HasBegun              bool
+	WaitingForAnswers     bool
 }
 
 // Struct that represents a player in a game.
 type PlayerGameInfo struct {
 	Player          tgbotapi.User
 	Points          int
-	Cards           []string
+	Cards           []int
 	IsCardTzar      bool
-	CardBeingPlayed string
+	CardBeingPlayed int
 }
 
 // Settings for game.
@@ -55,4 +64,19 @@ type GameSettings struct {
 	TradeInTwoCardsEveryRound bool
 	PickWorstToo              bool
 	NumCardsInHand            int
+}
+
+// Question card
+type QuestionCard struct {
+	ID         int    `json:"id""`
+	Text       string `json:"text"`
+	NumAnswers int    `json:"numAnswers"`
+	Expansion  string `json:"expansion"`
+}
+
+// Question card
+type AnswerCard struct {
+	ID        int    `json:"id""`
+	Text      string `json:"text"`
+	Expansion string `json:"expansion"`
 }

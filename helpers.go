@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -41,7 +42,7 @@ func (gs GameSettings) String() string {
 }
 
 // Shuffle an array of strings.
-func shuffle(arr []string) {
+func shuffle(arr []int) {
 	t := time.Now()
 	rand.Seed(int64(t.Nanosecond()))
 
@@ -54,7 +55,7 @@ func shuffle(arr []string) {
 // This function checks to see if we have answer cards from all the players.
 func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
 	for _, value := range Players {
-		if !value.IsCardTzar && value.CardBeingPlayed == "" {
+		if !value.IsCardTzar && value.CardBeingPlayed == -1 {
 			return false
 		}
 	}
@@ -62,9 +63,10 @@ func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
 }
 
 // This function will deal a player's hand or add cards to the player's hand
-func DealPlayersHand(Game CAHGame, Hand []string) {
+func DealPlayerHand(Game CAHGame, Hand []int) {
 	for len(Hand) < Game.Settings.NumCardsInHand {
-		append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
+		log.Printf("Dealing card %v to user.", Game.NumACardsLeft)
+		Hand = append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
 		Game.NumACardsLeft -= 1
 		if Game.NumACardsLeft == -1 {
 			ReshuffleACards(Game)
