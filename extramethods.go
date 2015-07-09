@@ -2,6 +2,7 @@ package main
 
 import (
 	"cahbot/tgbotapi"
+	"html"
 	"log"
 	"strconv"
 	"strings"
@@ -93,7 +94,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is already a game created here.  Use command '/stop' to end the previous game or '/resume' to resume."))
 			}
 		} else {
-			bot.CreateNewGame(m.Chat.ID, m.From)
+			bot.CreateNewGame(m.Chat.ID, m.From, m.MessageID)
 		}
 	case "begin", "resume":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
@@ -119,7 +120,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		}
 	case "join":
 		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			bot.AddPlayerToGame(m.Chat.ID, m.From, false)
+			bot.AddPlayerToGame(m.Chat.ID, m.From, m.MessageID, false)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -130,8 +131,14 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "mycards":
-		if _, ok := bot.CurrentGames[m.Chat.ID]; ok {
-			bot.ListCardsForUser(m.Chat.ID, m.From)
+		if game, ok := bot.CurrentGames[m.Chat.ID]; ok {
+			if _, yes := game.Players[m.From.ID]; yes {
+				bot.ListCardsForUser(m.Chat.ID, bot.CurrentGames[m.Chat.ID].Players[m.From.ID])
+			} else {
+				message := tgbotapi.NewMessage(m.Chat.ID, m.From.String()+", you are not in the current game, so I cannot show you your cards.  Use command '/join' to join the game.")
+				message.ReplyToMessageID = m.MessageID
+				bot.SendMessage(message)
+			}
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -167,7 +174,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 }
 
 // This method creates a new game.
-func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) {
+func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User, MessageID int) {
 	log.Printf("Creating a new game for Chat ID %v.", ChatID)
 	// Get the keys for the All Cards map.
 	ShuffledQuestionCards := make([]int, len(bot.AllQuestionCards))
@@ -182,7 +189,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) {
 	shuffle(ShuffledAnswerCards)
 	bot.CurrentGames[ChatID] = CAHGame{ChatID, ShuffledQuestionCards, ShuffledAnswerCards, len(ShuffledQuestionCards) - 1, len(ShuffledAnswerCards) - 1, make(map[int]PlayerGameInfo), []int{User.ID}, 0, -1, GameSettings{false, false, false, 7}, false, false}
 	log.Printf("Game for Chat ID %v created successfully!%v", ChatID)
-	bot.AddPlayerToGame(ChatID, User, true)
+	bot.AddPlayerToGame(ChatID, User, MessageID, true)
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "The game was created successfully."))
 }
 
@@ -200,15 +207,10 @@ func (bot *CAHBot) BeginGame(ChatID int) {
 		for _, value := range bot.CurrentGames[ChatID].Players {
 			if !value.IsCardTzar && value.CardBeingPlayed == -1 {
 				log.Printf("Asking %v for an answer card.", value)
-				bot.AskForCardFromPlayer(ChatID, value)
+				bot.ListCardsForUser(ChatID, value)
 			}
 		}
 	}
-}
-
-// This method asks a player for a card.
-func (bot *CAHBot) AskForCardFromPlayer(ChatID int, Player PlayerGameInfo) {
-
 }
 
 // This method asks the Card Tzar to make a choice.
@@ -234,7 +236,7 @@ func (bot *CAHBot) DisplayQuestionCard(ChatID int) {
 	log.Printf("Sending question care to game with ID %v...", ChatID)
 	var message string = "Here is the question card:\n"
 	message += bot.AllQuestionCards[bot.CurrentGames[ChatID].QuestionCard].Text
-	bot.SendMessage(tgbotapi.NewMessage(ChatID, message))
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, html.UnescapeString(message)))
 }
 
 // This method pauses a started game.
@@ -254,8 +256,24 @@ func (bot *CAHBot) StopGame(ChatID int) {
 	delete(bot.CurrentGames, ChatID)
 }
 
-func (bot *CAHBot) ListCardsForUser(ChatID int, User tgbotapi.User) {
-
+// This method lists the cards for the user.  If we need them to respond to a question, this is handled.
+func (bot *CAHBot) ListCardsForUser(ChatID int, Player PlayerGameInfo) {
+	log.Printf("Showing the user %v their cards.", Player.Player.String())
+	message := tgbotapi.NewMessage(ChatID, "")
+	cards := make([][]string, len(bot.CurrentGames[ChatID].Players[Player.Player.ID].Cards))
+	for i := range cards {
+		cards[i] = make([]string, 1)
+	}
+	if Player.Player.UserName != "" {
+		message.Text += "@" + Player.Player.UserName
+	} else {
+		message.ReplyToMessageID = Player.ReplyID
+	}
+	for i := 0; i < len(bot.CurrentGames[ChatID].Players[Player.Player.ID].Cards); i++ {
+		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[bot.CurrentGames[ChatID].Players[Player.Player.ID].Cards[i]].Text)
+	}
+	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
+	bot.SendMessage(message)
 }
 
 func (bot *CAHBot) SendGameSettings(ChatID int) {
@@ -272,7 +290,7 @@ func (bot *CAHBot) ReceiveFeedback(ChatID int) {
 }
 
 // Add a player to a game if the player is not playing.
-func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MakeTzar bool) {
+func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MessageID int, MakeTzar bool) {
 	if len(bot.CurrentGames[ChatID].Players) > 9 {
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Player limit of 10 reached, we can not add any more players."))
 	} else {
@@ -282,8 +300,8 @@ func (bot *CAHBot) AddPlayerToGame(ChatID int, User tgbotapi.User, MakeTzar bool
 			log.Printf("Adding %v to the game %v...", User, ChatID)
 			game := bot.CurrentGames[ChatID]
 			PlayerHand := make([]int, 0, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
-			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, 0, PlayerHand, MakeTzar, -1}
-			DealPlayerHand(game, PlayerHand)
+			PlayerHand = DealPlayerHand(game, PlayerHand)
+			bot.CurrentGames[ChatID].Players[User.ID] = PlayerGameInfo{User, MessageID, 0, PlayerHand, MakeTzar, -1}
 			game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder, User.ID)
 			bot.CurrentGames[ChatID] = game
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))

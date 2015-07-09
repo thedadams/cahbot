@@ -63,7 +63,7 @@ func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
 }
 
 // This function will deal a player's hand or add cards to the player's hand
-func DealPlayerHand(Game CAHGame, Hand []int) {
+func DealPlayerHand(Game CAHGame, Hand []int) []int {
 	for len(Hand) < Game.Settings.NumCardsInHand {
 		log.Printf("Dealing card %v to user.", Game.NumACardsLeft)
 		Hand = append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
@@ -72,6 +72,7 @@ func DealPlayerHand(Game CAHGame, Hand []int) {
 			ReshuffleACards(Game)
 		}
 	}
+	return Hand
 }
 
 //This function reshuffles the answer cards of a game.

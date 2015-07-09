@@ -50,8 +50,10 @@ type CAHGame struct {
 }
 
 // Struct that represents a player in a game.
+// The ReplyID is to the join message the user sends so we can reply to it if they don't have a username.
 type PlayerGameInfo struct {
 	Player          tgbotapi.User
+	ReplyID         int
 	Points          int
 	Cards           []int
 	IsCardTzar      bool
