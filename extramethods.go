@@ -1,7 +1,10 @@
 package main
 
 import (
+	"cahbot/secrets"
 	"cahbot/tgbotapi"
+	"crypto/sha512"
+	"encoding/base64"
 	"html"
 	"log"
 	"strconv"
@@ -21,6 +24,10 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 func (bot *CAHBot) SendNoGameMessage(ChatID int) {
 	log.Printf("Telling them there is no game right now.")
 	bot.SendMessage(tgbotapi.NewMessage(ChatID, "There is no game being played here.  Use command '/create' to create a new one."))
+}
+
+func (bot *CAHBot) WrongCommand(ChatID int) {
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "Sorry, I don't know that command."))
 }
 
 // Here we detect the kind of message we received from the user.
@@ -168,8 +175,29 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		}
 	case "feedback":
 		bot.ReceiveFeedback(m.Chat.ID)
+	case "logging":
+		if len(strings.Fields(m.Text)) > 1 {
+			hasher := sha512.New()
+			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.Pass) {
+				bot.Debug = !bot.Debug
+				log.Printf("Debugging/verbose logging has been turned to %v.", bot.Debug)
+			}
+		} else {
+			bot.WrongCommand(m.Chat.ID)
+		}
+	case "status":
+		if len(strings.Fields(m.Text)) > 1 {
+			hasher := sha512.New()
+			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.Pass) {
+				message := "There are currently " + strconv.Itoa(len(bot.CurrentGames)) + " games being played."
+				log.Printf("Sending status message...")
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, message))
+			}
+		} else {
+			bot.WrongCommand(m.Chat.ID)
+		}
 	default:
-		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Sorry, I don't know that command."))
+		bot.WrongCommand(m.Chat.ID)
 	}
 }
 
