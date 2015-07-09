@@ -19,6 +19,14 @@ func main() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
+	// This is the code that we will use to write the bot to file.
+	// Need to figure out how to interrupt the update loop to do this safely.
+	/*fileJson, _ := json.Marshal(generic)
+	  err := ioutil.WriteFile("output.json", fileJson, 0644)
+	  if err != nil {
+	      fmt.Printf("WriteFileJson ERROR: %+v", err)
+	  }*/
+
 	updates, err := bot.UpdatesChan(u)
 
 	for update := range updates {

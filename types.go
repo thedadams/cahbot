@@ -10,9 +10,9 @@ import (
 // A wrapper for tgbotapi. We need this wrapper to add new methods.
 type CAHBot struct {
 	*tgbotapi.BotAPI
-	CurrentGames     map[int]CAHGame
-	AllQuestionCards []QuestionCard
-	AllAnswerCards   []AnswerCard
+	CurrentGames     map[string]CAHGame `json:"current_games"`
+	AllQuestionCards []QuestionCard     `json:"all_question_cards"`
+	AllAnswerCards   []AnswerCard       `json:"all_answer_cards"`
 }
 
 // This creates a new CAHBot, which is basically a wrapper for tgbotapi.BotAPI.
@@ -30,42 +30,44 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	if err != nil {
 		log.Printf("%v", err)
 	}
-	return &CAHBot{GenericBot, make(map[int]CAHGame), AllQuestionCards, AllAnswerCards}, err
+	return &CAHBot{GenericBot, make(map[string]CAHGame), AllQuestionCards, AllAnswerCards}, err
 }
 
 // Struct that represents an instance of a game.
 type CAHGame struct {
-	ChatID                int
-	ShuffledQuestionCards []int
-	ShuffledAnswerCards   []int
-	NumQCardsLeft         int
-	NumACardsLeft         int
-	Players               map[int]PlayerGameInfo
-	CardTzarOrder         []int
-	CardTzarIndex         int
-	QuestionCard          int
-	Settings              GameSettings
-	HasBegun              bool
-	WaitingForAnswers     bool
+	ChatID                int                       `json:"chat_id"`
+	ShuffledQuestionCards []int                     `json:"shuffled_q_cards"`
+	ShuffledAnswerCards   []int                     `json:"shuffled_a_cards"`
+	NumQCardsLeft         int                       `json:"q_cards_left"`
+	NumACardsLeft         int                       `json:"a_cards_left"`
+	Players               map[string]PlayerGameInfo `json:"players"`
+	CardTzarOrder         []string                  `json:"tzar_order"`
+	CardTzarIndex         int                       `json:"tzar_index"`
+	QuestionCard          int                       `json:"current_q_card"`
+	Settings              GameSettings              `json:"settings"`
+	HasBegun              bool                      `json:"has_begun"`
+	WaitingForAnswers     bool                      `json:"waiting_for_answers"`
 }
 
 // Struct that represents a player in a game.
 // The ReplyID is to the join message the user sends so we can reply to it if they don't have a username.
 type PlayerGameInfo struct {
-	Player          tgbotapi.User
-	ReplyID         int
-	Points          int
-	Cards           []int
-	IsCardTzar      bool
-	CardBeingPlayed int
+	Player          tgbotapi.User `json:"user"`
+	ReplyID         int           `json:"reply_id"`
+	Points          int           `json:"points"`
+	Cards           []int         `json:"cards"`
+	IsCardTzar      bool          `json:"is_tzar"`
+	CardBeingPlayed int           `json:"played_card"`
 }
 
 // Settings for game.
 type GameSettings struct {
-	MysteryPlayer             bool
-	TradeInTwoCardsEveryRound bool
-	PickWorstToo              bool
-	NumCardsInHand            int
+	MysteryPlayer          bool `json:"mystery_player"`
+	TradeInCardsEveryRound bool `json:"trade_in_cards_every_round"`
+	NumCardsToTradeIn      int  `json:"num_cards_to_trade_in"`
+	PickWorstToo           bool `json:"pick_worst"`
+	NumCardsInHand         int  `json:"num_cards_in_hand"`
+	NumPointsToWin         int  `json:"points_to_win"`
 }
 
 // Question card

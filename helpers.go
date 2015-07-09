@@ -25,7 +25,7 @@ func (gs GameSettings) String() string {
 		onOff = "Off"
 	}
 	tmp := "Mystery Player - " + onOff + "\n"
-	if gs.TradeInTwoCardsEveryRound {
+	if gs.TradeInCardsEveryRound {
 		onOff = "On"
 	} else {
 		onOff = "Off"
@@ -53,7 +53,7 @@ func shuffle(arr []int) {
 }
 
 // This function checks to see if we have answer cards from all the players.
-func DoWeHaveAllAnswers(Players map[int]PlayerGameInfo) bool {
+func DoWeHaveAllAnswers(Players map[string]PlayerGameInfo) bool {
 	for _, value := range Players {
 		if !value.IsCardTzar && value.CardBeingPlayed == -1 {
 			return false
@@ -85,4 +85,14 @@ func ReshuffleACards(Game CAHGame) {
 func ReshuffleQCards(Game CAHGame) {
 	shuffle(Game.ShuffledQuestionCards)
 	Game.NumQCardsLeft = len(Game.ShuffledQuestionCards) - 1
+}
+
+// This function goes through a game and determines if someone has won.
+func DidSomeoneWin(Game CAHGame) (PlayerGameInfo, bool) {
+	for _, value := range Game.Players {
+		if value.Points == Game.Settings.NumPointsToWin {
+			return value, true
+		}
+	}
+	return PlayerGameInfo{}, false
 }
