@@ -299,7 +299,7 @@ func (bot *CAHBot) StartRound(ChatID string) {
 					bot.DisplayQuestionCard(ChatID)
 				}
 				for _, value := range bot.CurrentGames[ChatID].Players {
-					if !value.IsCardTzar && value.CardBeingPlayed == -1 {
+					if !value.IsCardTzar && value.AnswerBeingPlayed == "" {
 						log.Printf("Asking %v for an answer card.", value)
 						bot.ListCardsForUserWithMessage(ChatID, value, "Please pick an answer for the question.")
 					}
@@ -330,7 +330,7 @@ func (bot *CAHBot) StopGame(ChatID string) {
 
 // Sends a message show the players the question card.
 func (bot *CAHBot) DisplayQuestionCard(ChatID string) {
-	log.Printf("Sending question care to game with ID %v...", ChatID)
+	log.Printf("Sending question card to game with ID %v...", ChatID)
 	var message string = "Here is the question card:\n"
 	message += bot.AllQuestionCards[bot.CurrentGames[ChatID].QuestionCard].Text
 	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, html.UnescapeString(message)))
@@ -360,7 +360,7 @@ func (bot *CAHBot) GetQuestionCard(ChatID string) {
 	bot.CurrentGames[ChatID] = Game
 }
 
-// This method lists the cards for the user.  If we need them to respond to a question, this is handled.
+// This method lists a user's cards using a custom keyboard in the Telegram API.  If we need them to respond to a question, this is handled.
 func (bot *CAHBot) ListCardsForUserWithMessage(ChatID string, Player PlayerGameInfo, text string) {
 	log.Printf("Showing the user %v their cards.", Player.Player.String())
 	message := tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, text)
@@ -376,6 +376,27 @@ func (bot *CAHBot) ListCardsForUserWithMessage(ChatID string, Player PlayerGameI
 	for i := 0; i < len(bot.CurrentGames[ChatID].Players[strconv.Itoa(Player.Player.ID)].Cards); i++ {
 		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[bot.CurrentGames[ChatID].Players[strconv.Itoa(Player.Player.ID)].Cards[i]].Text)
 	}
+	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
+	bot.SendMessage(message)
+}
+
+// This method lists the answers for everyone and allows the Tzar to choose one.
+func (bot *CAHBot) ListAnswers(ChatID string) {
+	Tzar := bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarOrder[bot.CurrentGames[ChatID].CardTzarIndex]]
+	cards := BuildAnswerList(bot.CurrentGames[ChatID])
+	text := "Here are the submitted answers:\n\n"
+	for value := range cards {
+		text += value[0] + "\n"
+	}
+	log.Printf("Showing everyone the answers submitted for game %v.", ChatID)
+	message := tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, text)
+	bot.SendMessage(message)
+	if Tzar.Player.UserName != "" {
+		message.Text += "@" + Tzar.Player.UserName
+	} else {
+		message.ReplyToMessageID = Tzar.ReplyID
+	}
+	message.Text = "Tzar " + Tzar.Player.String() + ", please choose the best answer."
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
 	bot.SendMessage(message)
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"html"
 	"log"
 	"math/rand"
 	"strconv"
@@ -55,7 +56,7 @@ func shuffle(arr []int) {
 // This function checks to see if we have answer cards from all the players.
 func DoWeHaveAllAnswers(Players map[string]PlayerGameInfo) bool {
 	for _, value := range Players {
-		if !value.IsCardTzar && value.CardBeingPlayed == -1 {
+		if !value.IsCardTzar && value.AnswerBeingPlayed == "" {
 			return false
 		}
 	}
@@ -95,4 +96,16 @@ func DidSomeoneWin(Game CAHGame) (PlayerGameInfo, bool) {
 		}
 	}
 	return PlayerGameInfo{}, false
+}
+
+// This function builds the list of submitted answers to be available for the players.
+func BuildAnswerList(Game CAHGame) [][]string {
+	answers := make([][]string, len(Game.Players))
+	for i := range answers {
+		answers[i] = make([]string, 1)
+	}
+	for i := 0; i < len(Game.Players); i++ {
+		answers[i][0] = html.UnescapeString(Game.Players[strconv.Itoa(Player.Player.ID)].AnswerBeingPlayed)
+	}
+	return answers
 }

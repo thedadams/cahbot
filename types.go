@@ -52,12 +52,12 @@ type CAHGame struct {
 // Struct that represents a player in a game.
 // The ReplyID is to the join message the user sends so we can reply to it if they don't have a username.
 type PlayerGameInfo struct {
-	Player          tgbotapi.User `json:"user"`
-	ReplyID         int           `json:"reply_id"`
-	Points          int           `json:"points"`
-	Cards           []int         `json:"cards"`
-	IsCardTzar      bool          `json:"is_tzar"`
-	CardBeingPlayed int           `json:"played_card"`
+	Player            tgbotapi.User `json:"user"`
+	ReplyID           int           `json:"reply_id"`
+	Points            int           `json:"points"`
+	Cards             []int         `json:"cards"`
+	IsCardTzar        bool          `json:"is_tzar"`
+	AnswerBeingPlayed string        `json:"answer_played"`
 }
 
 // Settings for game.
