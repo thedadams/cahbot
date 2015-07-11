@@ -44,8 +44,7 @@ func (gs GameSettings) String() string {
 
 // Shuffle an array of strings.
 func shuffle(arr []int) {
-	t := time.Now()
-	rand.Seed(int64(t.Nanosecond()))
+	rand.Seed(time.Now().UnixNano())
 
 	for i := len(arr) - 1; i > 0; i-- {
 		j := rand.Intn(i)
@@ -55,8 +54,7 @@ func shuffle(arr []int) {
 
 // This function shuffles the answers so they don't come out in the same order every time.
 func ShuffleAnswers(arr [][]string) {
-	t := time.Now()
-	rand.Seed(int64(t.Nanosecond()))
+	rand.Seed(time.Now().UnixNano())
 
 	for i := len(arr) - 1; i > 0; i-- {
 		j := rand.Intn(i)
