@@ -53,6 +53,17 @@ func shuffle(arr []int) {
 	}
 }
 
+// This function shuffles the answers so they don't come out in the same order every time.
+func ShuffleAnswers(arr [][]string) {
+	t := time.Now()
+	rand.Seed(int64(t.Nanosecond()))
+
+	for i := len(arr) - 1; i > 0; i-- {
+		j := rand.Intn(i)
+		arr[i], arr[j] = arr[j], arr[i]
+	}
+}
+
 // This function checks to see if we have answer cards from all the players.
 func DoWeHaveAllAnswers(Players map[string]PlayerGameInfo) bool {
 	for _, value := range Players {
@@ -104,8 +115,11 @@ func BuildAnswerList(Game CAHGame) [][]string {
 	for i := range answers {
 		answers[i] = make([]string, 1)
 	}
-	for i := 0; i < len(Game.Players); i++ {
-		answers[i][0] = html.UnescapeString(Game.Players[strconv.Itoa(Player.Player.ID)].AnswerBeingPlayed)
+	i := 0
+	for _, value := range Game.Players {
+		answers[i][0] = html.UnescapeString(value.AnswerBeingPlayed)
+		i++
 	}
+	ShuffleAnswers(answers)
 	return answers
 }

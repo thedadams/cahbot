@@ -385,8 +385,8 @@ func (bot *CAHBot) ListAnswers(ChatID string) {
 	Tzar := bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarOrder[bot.CurrentGames[ChatID].CardTzarIndex]]
 	cards := BuildAnswerList(bot.CurrentGames[ChatID])
 	text := "Here are the submitted answers:\n\n"
-	for value := range cards {
-		text += value[0] + "\n"
+	for i := range cards {
+		text += cards[i][0] + "\n"
 	}
 	log.Printf("Showing everyone the answers submitted for game %v.", ChatID)
 	message := tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, text)
@@ -426,7 +426,7 @@ func (bot *CAHBot) AddPlayerToGame(ChatID string, User tgbotapi.User, MessageID 
 			game := bot.CurrentGames[ChatID]
 			PlayerHand := make([]int, 0, bot.CurrentGames[ChatID].Settings.NumCardsInHand)
 			PlayerHand = DealPlayerHand(game, PlayerHand)
-			bot.CurrentGames[ChatID].Players[strconv.Itoa(User.ID)] = PlayerGameInfo{User, MessageID, 0, PlayerHand, MakeTzar, -1}
+			bot.CurrentGames[ChatID].Players[strconv.Itoa(User.ID)] = PlayerGameInfo{User, MessageID, 0, PlayerHand, MakeTzar, ""}
 			game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder, strconv.Itoa(User.ID))
 			bot.CurrentGames[ChatID] = game
 			bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "Welcome to the game, "+User.String()+"!"))
