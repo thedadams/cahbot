@@ -8,6 +8,28 @@ import (
 	"time"
 )
 
+// Creates a random string for a Game ID.
+func GetRandomID() string {
+	var id string = ""
+	characters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "!", "#", "$", "@", "?", "-", "&", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	n := len(characters)
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < 5; i++ {
+		id += characters[rand.Intn(n)]
+	}
+	return id
+}
+
+// Transforms an array for input into postges database.
+func ArrayTransforForPostgres(theArray []int) string {
+	value := "{"
+	for item := range theArray {
+		value += strconv.Itoa(theArray[item]) + ","
+	}
+	value = value[:len(value)-1] + "}"
+	return value
+}
+
 // Get the scores for a game.
 func (g CAHGame) Scores() string {
 	var str string = ""

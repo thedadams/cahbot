@@ -100,13 +100,14 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	case "create":
 		if value, ok := bot.CurrentGames[ChatID]; ok {
 			if value.HasBegun {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is already a game going here.  Use command '/stop' to end the previous game."))
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already in a game.  Use command '/leave' to leave the previous game."))
 			} else {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is already a game created here.  Use command '/stop' to end the previous game or '/resume' to resume."))
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already in a game.  Use command '/leave' to leave the previous game or '/resume' to resume it."))
 			}
 		} else {
-			if bot.CreateNewGame(ChatID, m.From, m.MessageID) {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game was created successfully."))
+			ID := bot.CreateNewGame(ChatID, m.From)
+			if ID != "" {
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game was created successfully.  Tell your friends to use the command '/join "+ID+"' to join your game."))
 			} else {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "An error occurred while trying to create the game.  The game was not created."))
 			}
@@ -228,7 +229,7 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) {
 	if err != nil {
 		log.Printf("Cannot connect to the database.")
 	}
-	err = tx.QueryRow("SELECT chat_id FROM users where id=$1", User.ID).Scan(&OldChatID)
+	err = tx.QueryRow("SELECT chat_id FROM users WHERE id=$1", User.ID).Scan(&OldChatID)
 	switch {
 	case err == sql.ErrNoRows:
 		// The user is not in the database so we add them.
@@ -247,9 +248,19 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) {
 }
 
 // This method creates a new game.
-func (bot *CAHBot) CreateNewGame(ChatID string, User tgbotapi.User, MessageID int) bool {
-	log.Printf("Creating a new game for Chat ID %v.", ChatID)
-	// Get the keys for the All Cards map.
+func (bot *CAHBot) CreateNewGame(ChatID string, User tgbotapi.User) bool {
+	tx, err := bot.db_conn.Begin()
+	var GameID string
+	for {
+		GameID = GetRandomID()
+		var tmp string
+		err := tx.QueryRow("SELECT id FROM games WHERE id=$1", GameID).Scan(&tmp)
+		if err == sql.ErrNoRows {
+			break
+		}
+	}
+	log.Printf("Creating a new game with ID %v.", GameID)
+	// Get the keys for the All Cards map.SE
 	ShuffledQuestionCards := make([]int, len(bot.AllQuestionCards))
 	for i := 0; i < len(ShuffledQuestionCards); i++ {
 		ShuffledQuestionCards[i] = i
@@ -260,15 +271,19 @@ func (bot *CAHBot) CreateNewGame(ChatID string, User tgbotapi.User, MessageID in
 		ShuffledAnswerCards[i] = i
 	}
 	shuffle(ShuffledAnswerCards)
-	ID, err := strconv.Atoi(ChatID)
 	if err != nil {
 		log.Printf("Error creating game: %v", err)
-		return false
+		return ""
 	}
-	bot.CurrentGames[ChatID] = CAHGame{ID, ShuffledQuestionCards, ShuffledAnswerCards, len(ShuffledQuestionCards) - 1, len(ShuffledAnswerCards) - 1, make(map[string]PlayerGameInfo), []string{strconv.Itoa(User.ID)}, -1, -1, GameSettings{false, false, 1, false, 7, 7}, false, false}
-	log.Printf("Game for Chat ID %v created successfully!%v", ChatID)
-	bot.AddPlayerToGame(ChatID, User, MessageID, true)
-	return true
+	tx.Exec("INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, tzar_order, tzar_index, current_qcard, has_begun, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), len(ShuffledQuestionCards), len(ShuffledAnswerCards), "{"+strconv.Itoa(User.ID)+"}", -1, -1, false, false, false, false, 1, false, 7, 7)
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("Game could not be created. ERROR: %v", err)
+		return ""
+	}
+	log.Printf("Game with id %v created successfully!", GameID)
+	//bot.AddPlayerToGame(ChatID, User, true)
+	return GameID
 }
 
 // This method begins an already created game.
