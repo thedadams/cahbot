@@ -4,6 +4,7 @@ import (
 	"cahbot/secrets"
 	"cahbot/tgbotapi"
 	"crypto/sha512"
+	"database/sql"
 	"encoding/base64"
 	"html"
 	"log"
@@ -21,23 +22,12 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 }
 
 // Send a 'There is no game' message
-func (bot *CAHBot) SendNoGameMessage(ChatID string) {
-	log.Printf("Telling them there is no game right now.")
-	ID, err := strconv.Atoi(ChatID)
-	if err != nil {
-		log.Printf("Could not send message: ERROR %v", err)
-	} else {
-		bot.SendMessage(tgbotapi.NewMessage(ID, "There is no game being played here.  Use command '/create' to create a new one."))
-	}
+func (bot *CAHBot) SendNoGameMessage(ChatID int) {
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "You are currently not in a game.  Use command '/create' to create a new one or '/join <id>' to join a game with an id."))
 }
 
-func (bot *CAHBot) WrongCommand(ChatID string) {
-	ID, err := strconv.Atoi(ChatID)
-	if err != nil {
-		log.Printf("Could not send message: ERROR %v", err)
-	} else {
-		bot.SendMessage(tgbotapi.NewMessage(ID, "Sorry, I don't know that command."))
-	}
+func (bot *CAHBot) WrongCommand(ChatID int) {
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "Sorry, I don't know that command."))
 }
 
 // Here we detect the kind of message we received from the user.
@@ -97,12 +87,14 @@ func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 // and call the appropriate method.
 func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	log.Printf("Processing command....")
-	// Convert the Chat ID to a string.
-	ChatID := strconv.Itoa(m.Chat.ID)
+	ChatID := ""
 	// Get the command.
 	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
 	case "start":
-		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  To see all available commands, use '/help'."))
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  If you create a game, you will be given a 6 character id you can share with friends so they can join you.  You can also join a game using the '/join <id>' command where the '<id>' is replaced with a game id created by someone else.  To see all available commands, use '/help'."))
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "While you are in a game, any (non-command) message you send to me will be automatically forwarded to everyone else in the game so you're all in the loop."))
+		log.Printf("Adding user with ID %v to the database.", m.From.ID)
+		bot.AddUserToDatabase(m.From, m.Chat.ID)
 	case "help":
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "A help message should go here."))
 	case "create":
@@ -123,13 +115,13 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.BeginGame(ChatID)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "stop":
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.StopGame(ChatID)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "pause":
 		if value, ok := bot.CurrentGames[ChatID]; ok {
@@ -140,25 +132,25 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 				bot.SendMessage(tgbotapi.NewMessage(ID, "The current game is already paused.  Use command '/resume' to resume it."))
 			}
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "join":
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.AddPlayerToGame(ChatID, m.From, m.MessageID, false)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "leave":
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.RemovePlayerFromGame(ChatID, m.From)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "next":
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.StartRound(ChatID)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "mycards":
 		if game, ok := bot.CurrentGames[ChatID]; ok {
@@ -170,25 +162,25 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 				bot.SendMessage(message)
 			}
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "scores":
 		if value, ok := bot.CurrentGames[ChatID]; ok {
 			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Here are the current scores:\n"+value.Scores()))
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "settings":
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.SendGameSettings(ChatID)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "changesettings":
 		if _, ok := bot.CurrentGames[ChatID]; ok {
 			bot.ChangeGameSettings(ChatID)
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "whoistzar":
 		if value, ok := bot.CurrentGames[ChatID]; ok {
@@ -198,7 +190,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card Tzar is "+value.Players[value.CardTzarOrder[value.CardTzarIndex]].Player.String()+"."))
 			}
 		} else {
-			bot.SendNoGameMessage(ChatID)
+			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "feedback":
 		bot.ReceiveFeedback(ChatID)
@@ -210,7 +202,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 				log.Printf("Debugging/verbose logging has been turned to %v.", bot.Debug)
 			}
 		} else {
-			bot.WrongCommand(ChatID)
+			bot.WrongCommand(m.Chat.ID)
 		}
 	case "status":
 		if len(strings.Fields(m.Text)) > 1 {
@@ -221,10 +213,36 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, message))
 			}
 		} else {
-			bot.WrongCommand(ChatID)
+			bot.WrongCommand(m.Chat.ID)
 		}
 	default:
-		bot.WrongCommand(ChatID)
+		bot.WrongCommand(m.Chat.ID)
+	}
+}
+
+// This method adds a user to the database. It does not link them to a game.
+func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) {
+	// Check to see if the user is already in the database.
+	var OldChatID int
+	tx, err := bot.db_conn.Begin()
+	if err != nil {
+		log.Printf("Cannot connect to the database.")
+	}
+	err = tx.QueryRow("SELECT chat_id FROM users where id=$1", User.ID).Scan(&OldChatID)
+	switch {
+	case err == sql.ErrNoRows:
+		// The user is not in the database so we add them.
+		tx.Exec("INSERT INTO users (id, first_name, last_name, username, chat_id, points, cards_in_hand, current_tzar, current_answer) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", User.ID, User.FirstName, User.LastName, User.UserName, ChatID, 0, nil, false, "")
+	case err != nil:
+		// An unknown error occurred.
+		log.Printf("ERROR %T: %v", err, err)
+	default:
+		log.Printf("User with id %v is already in the database.", User.ID)
+		tx.Exec("UPDATE users SET chat_id=$1 WHERE id=$2", ChatID, User.ID)
+	}
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("Unable to commit add of user with id %v to the database.", User.ID)
 	}
 }
 
