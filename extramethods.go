@@ -205,7 +205,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	case "logging":
 		if len(strings.Fields(m.Text)) > 1 {
 			hasher := sha512.New()
-			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.Pass) {
+			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.AppPass) {
 				bot.Debug = !bot.Debug
 				log.Printf("Debugging/verbose logging has been turned to %v.", bot.Debug)
 			}
@@ -215,7 +215,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
 	case "status":
 		if len(strings.Fields(m.Text)) > 1 {
 			hasher := sha512.New()
-			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.Pass) {
+			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.AppPass) {
 				message := "There are currently " + strconv.Itoa(len(bot.CurrentGames)) + " games being played."
 				log.Printf("Sending status message...")
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, message))

@@ -3,13 +3,16 @@ package main
 import (
 	"cahbot/secrets"
 	"cahbot/tgbotapi"
+	"database/sql"
 	"encoding/json"
+	_ "github.com/lib/pq"
 	"log"
 )
 
 // A wrapper for tgbotapi. We need this wrapper to add new methods.
 type CAHBot struct {
 	*tgbotapi.BotAPI
+	db_conn          *sql.DB
 	CurrentGames     map[string]CAHGame `json:"current_games"`
 	AllQuestionCards []QuestionCard     `json:"all_question_cards"`
 	AllAnswerCards   []AnswerCard       `json:"all_answer_cards"`
@@ -30,7 +33,11 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	if err != nil {
 		log.Printf("%v", err)
 	}
-	return &CAHBot{GenericBot, make(map[string]CAHGame), AllQuestionCards, AllAnswerCards}, err
+	db, err := sql.Open("postgres", "sslmode=disable user=cahbot dbname=cahgames password="+secrets.DBPass)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &CAHBot{GenericBot, db, make(map[string]CAHGame), AllQuestionCards, AllAnswerCards}, err
 }
 
 // Struct that represents an instance of a game.
