@@ -18,6 +18,32 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
 		bot.ProccessCommand(&update.Message)
+	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
+		bot.ForwardMessageToGroup(&update.Message)
+	}
+}
+
+// This method forwards a message from a player to the rest of the group.
+func (bot *CAHBot) ForwardMessageToGroup(m *tgbotapi.Message) {
+	tx, err := bot.db_conn.Begin()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+	rows, err := tx.Query("SELECT users.chat_id FROM users, games, players WHERE players.user_id = users.id AND players.game_id = games.id")
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+	defer rows.Close()
+	defer tx.Rollback()
+	var ID int
+	for rows.Next() {
+		if err := rows.Scan(&ID); err != nil {
+			log.Printf("ERROR: %v", err)
+		}
+		bot.ForwardMessage(tgbotapi.NewForward(ID, m.Chat.ID, m.MessageID))
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("ERROR: %v", err)
 	}
 }
 
@@ -74,7 +100,7 @@ func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 		return "newgroupchat"
 	}
 	if m.Contact.UserID != "" || m.Contact.FirstName != "" || m.Contact.LastName != "" {
-		return "contant"
+		return "contact"
 	}
 	if m.Location.Longitude != 0 && m.Location.Latitude != 0 {
 		return "location"
@@ -248,7 +274,7 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) {
 }
 
 // This method creates a new game.
-func (bot *CAHBot) CreateNewGame(ChatID string, User tgbotapi.User) bool {
+func (bot *CAHBot) CreateNewGame(ChatID string, User tgbotapi.User) string {
 	tx, err := bot.db_conn.Begin()
 	var GameID string
 	for {

@@ -21,9 +21,9 @@ func main() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates, err := bot.UpdatesChan(u)
+	err = bot.UpdatesChan(u)
 
-	for update := range updates {
+	for update := range bot.Updates {
 		go bot.HandleUpdate(&update)
 	}
 }
