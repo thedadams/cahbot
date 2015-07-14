@@ -4,6 +4,7 @@ import (
 	"cahbot/secrets"
 	"cahbot/tgbotapi"
 	"log"
+	"time"
 )
 
 func main() {
@@ -22,6 +23,12 @@ func main() {
 	u.Timeout = 60
 
 	err = bot.UpdatesChan(u)
+	c := time.Tick(1 * time.Minute)
+	go func() {
+		for now := range c {
+			log.Printf("%v %s\n", now, "This is when we would clean up the database.")
+		}
+	}()
 
 	for update := range bot.Updates {
 		go bot.HandleUpdate(&update)
