@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"html"
 	"log"
 	"math/rand"
@@ -20,6 +21,14 @@ func GetRandomID() string {
 	return id
 }
 
+// This function gets the GameID for a player.
+func GetGameID(UserID int, db *sql.DB) (string, error) {
+	var GameID string
+	err := db.QueryRow("SELECT game_id FROM players WHERE user_id = $1", UserID).Scan(&GameID)
+	return GameID, err
+
+}
+
 // Transforms an array for input into postges database.
 func ArrayTransforForPostgres(theArray []int) string {
 	value := "{"
@@ -31,10 +40,24 @@ func ArrayTransforForPostgres(theArray []int) string {
 }
 
 // Get the scores for a game.
-func (g CAHGame) Scores() string {
+// TODO: Needs to be rewritten using database.
+func GameScores(GameID string, db *sql.DB) string {
 	var str string = ""
-	for _, value := range g.Players {
-		str += value.Player.String() + " - " + strconv.Itoa(value.Points) + "\n"
+	rows, err := db.Query("SELECT users.display_name, users.points FROM users, players WHERE players.game_id = $1", GameID)
+	defer rows.Close()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return "ERROR"
+	}
+	for rows.Next() {
+		var name string
+		var points int
+		if err := rows.Scan(&name, &points); err == nil {
+			str += name + " - " + strconv.Itoa(points) + "\n"
+		} else {
+			log.Printf("ERROR: %v", err)
+			return "ERROR"
+		}
 	}
 	return str
 }

@@ -14,27 +14,51 @@ import (
 
 // This is the starting point for handling an update from chat.
 func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
+	bot.AddUserToDatabase(update.Message.From, update.Message.Chat.ID)
+	GameID, err := GetGameID(update.Message.From.ID, bot.db_conn)
 	messageType := bot.DetectKindMessageRecieved(&update.Message)
 	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
-		bot.ProccessCommand(&update.Message)
+		bot.ProccessCommand(&update.Message, GameID)
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
-		bot.ForwardMessageToGroup(&update.Message)
+		if err != nil {
+			bot.SendMessage(tgbotapi.NewMessage(update.Message.Chat.ID, "It seems that you are not involved in any game so your message fell on death ears."))
+		} else {
+			bot.ForwardMessageToGame(&update.Message, GameID)
+		}
 	}
 }
 
 // This method forwards a message from a player to the rest of the group.
-func (bot *CAHBot) ForwardMessageToGroup(m *tgbotapi.Message) {
-	tx, err := bot.db_conn.Begin()
-	if err != nil {
-		log.Printf("ERROR: %v", err)
-	}
-	rows, err := tx.Query("SELECT users.chat_id FROM users, games, players WHERE players.user_id = users.id AND players.game_id = games.id AND players.user_id != $1", m.From.ID)
-	if err != nil {
-		log.Printf("ERROR: %v", err)
-	}
+func (bot *CAHBot) SendMessageToGame(GameID, message string) {
+	rows, err := bot.db_conn.Query("SELECT users.chat_id FROM users, games, players WHERE players.game_id = $1", GameID)
 	defer rows.Close()
-	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
+	var ID int
+	for rows.Next() {
+		if err := rows.Scan(&ID); err != nil {
+			log.Printf("ERROR: %v", err)
+		} else {
+			bot.SendMessage(tgbotapi.NewMessage(ID, message))
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("ERROR: %v", err)
+	}
+}
+
+// This method forwards a message from a player to the rest of the group.
+func (bot *CAHBot) ForwardMessageToGame(m *tgbotapi.Message, GameID string) {
+	rows, err := bot.db_conn.Query("SELECT users.chat_id FROM users, games, players WHERE players.game_id = $1 AND players.user_id != $2", GameID, m.From.ID)
+	defer rows.Close()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(m.Chat.ID)
+		return
+	}
 	var ID int
 	for rows.Next() {
 		if err := rows.Scan(&ID); err != nil {
@@ -117,140 +141,116 @@ func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 
 // Here, we know we have a command, we figure out which command the user invoked,
 // and call the appropriate method.
-func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message) {
+func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	log.Printf("Processing command....")
-	ChatID := ""
 	// Get the command.
 	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
 	case "start":
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  If you create a game, you will be given a 6 character id you can share with friends so they can join you.  You can also join a game using the '/join <id>' command where the '<id>' is replaced with a game id created by someone else.  To see all available commands, use '/help'."))
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "While you are in a game, any (non-command) message you send to me will be automatically forwarded to everyone else in the game so you're all in the loop."))
 		log.Printf("Adding user with ID %v to the database.", m.From.ID)
-		bot.AddUserToDatabase(m.From, m.Chat.ID)
 	case "help":
 		// TODO: use helpers to build a help message.
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "A help message should go here."))
 	case "create":
-		var tmp string
-		tx, err := bot.db_conn.Begin()
-		if err != nil {
-			log.Printf("ERROR: %v", err)
+		if GameID != "" {
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+GameID+" and cannot create another game.  You can leave your current game with the command '/leave'."))
 		} else {
-			row := tx.QueryRow("SELECT game_id FROM players WHERE user_id = $1", m.From.ID)
-			if err := row.Scan(&tmp); err == nil {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+tmp+" and cannot create another game.  You can leave your current game with the command '/leave'."))
-				tx.Rollback()
+			ID := bot.CreateNewGame(m.Chat.ID, m.From)
+			if ID != "" {
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game was created successfully.  Tell your friends to use the command '/join "+ID+"' to join your game."))
+				bot.AddPlayerToGame(ID, m.From, m.Chat.ID, true)
 			} else {
-				ID := bot.CreateNewGame(m.Chat.ID, m.From)
-				if ID != "" {
-					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game was created successfully.  Tell your friends to use the command '/join "+ID+"' to join your game."))
-					bot.AddPlayerToGame(ID, m.From, m.Chat.ID, true)
-				} else {
-					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "An error occurred while trying to create the game.  The game was not created."))
-				}
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "An error occurred while trying to create the game.  The game was not created."))
 			}
 		}
 	case "begin", "resume":
-		if _, ok := bot.CurrentGames[ChatID]; ok {
-			bot.BeginGame(ChatID)
+		if GameID != "" {
+			bot.BeginGame(GameID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "stop":
-		if _, ok := bot.CurrentGames[ChatID]; ok {
-			bot.StopGame(ChatID)
+		if GameID != "" {
+			bot.StopGame(GameID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "pause":
-		if value, ok := bot.CurrentGames[ChatID]; ok {
-			if value.HasBegun {
-				bot.PauseGame(ChatID)
-			} else {
-				ID, _ := strconv.Atoi(ChatID)
-				bot.SendMessage(tgbotapi.NewMessage(ID, "The current game is already paused.  Use command '/resume' to resume it."))
-			}
+		if GameID != "" {
+			bot.PauseGame(GameID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "join":
 		if len(strings.Fields(m.Text)) > 1 {
-			var tmp string
-			tx, err := bot.db_conn.Begin()
-			if err != nil {
-				log.Printf("ERROR: %v", err)
+			if GameID != "" {
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+GameID+" and cannot join another game.  You can leave your current game with the command '/leave'."))
 			} else {
-				row := tx.QueryRow("SELECT game_id FROM players WHERE user_id = $1", m.From.ID)
-				if err := row.Scan(&tmp); err == nil {
-					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+tmp+" and cannot join another game.  You can leave your current game with the command '/leave'."))
-					tx.Rollback()
+				// If the user is not part of another game, we check to see if they id they
+				// game is valid.
+				row := bot.db_conn.QueryRow("SELECT id FROM games WHERE id = $1", strings.Fields(m.Text)[1])
+				if err := row.Scan(&GameID); err == nil {
+					// The id is valid and we add them.
+					bot.AddPlayerToGame(GameID, m.From, m.Chat.ID, false)
 				} else {
-					row = tx.QueryRow("SELECT id FROM games WHERE id = $1", strings.Fields(m.Text)[1])
-					tx.Rollback()
-					if err := row.Scan(&tmp); err == nil {
-						bot.AddPlayerToGame(tmp, m.From, m.Chat.ID, false)
-					} else {
-						bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game with id "+strings.Fields(m.Text)[1]+".  Please try again with a new id or use '/create' to create a game."))
-					}
+					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game with id "+strings.Fields(m.Text)[1]+".  Please try again with a new id or use '/create' to create a game."))
 				}
 			}
 		} else {
 			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You did not enter a game id.  Try again with the format '/join <id>'."))
 		}
 	case "leave":
-		if _, ok := bot.CurrentGames[ChatID]; ok {
-			bot.RemovePlayerFromGame(ChatID, m.From)
+		if GameID != "" {
+			bot.RemovePlayerFromGame(GameID, m.From)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "next":
-		if _, ok := bot.CurrentGames[ChatID]; ok {
-			bot.StartRound(ChatID)
+		if GameID != "" {
+			bot.StartRound(GameID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "mycards":
-		if game, ok := bot.CurrentGames[ChatID]; ok {
-			if _, yes := game.Players[strconv.Itoa(m.From.ID)]; yes {
-				bot.ListCardsForUserWithMessage(ChatID, bot.CurrentGames[ChatID].Players[strconv.Itoa(m.From.ID)], "Your cards are listed in the keyboard area.")
-			} else {
-				message := tgbotapi.NewMessage(m.Chat.ID, m.From.String()+", you are not in the current game, so I cannot show you your cards.  Use command '/join' to join the game.")
-				message.ReplyToMessageID = m.MessageID
-				bot.SendMessage(message)
-			}
+		if GameID != "" {
+			bot.ListCardsForUserWithMessage(GameID, m.From.ID, "Your cards are listed in the keyboard area.")
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "scores":
-		if value, ok := bot.CurrentGames[ChatID]; ok {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Here are the current scores:\n"+value.Scores()))
+		if GameID != "" {
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Here are the current scores:\n"+GameScores(GameID, bot.db_conn)))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "settings":
-		if _, ok := bot.CurrentGames[ChatID]; ok {
-			bot.SendGameSettings(ChatID)
+		if GameID != "" {
+			bot.SendGameSettings(GameID, m.Chat.ID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "changesettings":
-		if _, ok := bot.CurrentGames[ChatID]; ok {
-			bot.ChangeGameSettings(ChatID)
+		if GameID != "" {
+			bot.ChangeGameSettings(GameID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "whoistzar":
-		if value, ok := bot.CurrentGames[ChatID]; ok {
-			if bot.CurrentGames[ChatID].CardTzarIndex == -1 {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "It looks like the game hasn't started yet so we don't have a Tzar.  Use command '/begin' to start the game."))
-			} else {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card Tzar is "+value.Players[value.CardTzarOrder[value.CardTzarIndex]].Player.String()+"."))
+		if GameID != "" {
+			var Tzar string
+			row := bot.db_conn.QueryRow("SELECT users.display_name FROM players, games, users WHERE games.id = $1 AND players.game_id = games.id AND players.user_id = games.current_tzar", GameID)
+			if err := row.Scan(&Tzar); err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(m.Chat.ID)
+				return
 			}
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card Tzar is "+Tzar+"."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
 	case "feedback":
-		bot.ReceiveFeedback(ChatID)
+		bot.ReceiveFeedback(m.Chat.ID)
 	case "logging":
 		if len(strings.Fields(m.Text)) > 1 {
 			hasher := sha512.New()
@@ -291,7 +291,7 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) bool {
 	switch {
 	case err == sql.ErrNoRows:
 		// The user is not in the database so we add them.
-		tx.Exec("INSERT INTO users (id, first_name, last_name, username, chat_id, points, cards_in_hand, current_tzar, current_answer) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", User.ID, User.FirstName, User.LastName, User.UserName, ChatID, 0, nil, false, "")
+		tx.Exec("INSERT INTO users (id, first_name, last_name, username, display_name, chat_id, points, cards_in_hand, current_tzar, current_answer) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9, $10)", User.ID, User.FirstName, User.LastName, User.UserName, User.String(), ChatID, 0, nil, false, "")
 		return true
 	case err != nil:
 		// An unknown error occurred.
@@ -306,9 +306,6 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) bool {
 
 // This method creates a new game.
 func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
-	if !bot.AddUserToDatabase(User, ChatID) {
-		return ""
-	}
 	tx, err := bot.db_conn.Begin()
 	var GameID string
 	for {
@@ -335,7 +332,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 		log.Printf("Error creating game: %v", err)
 		return ""
 	}
-	tx.Exec("INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, tzar_order, tzar_index, current_qcard, has_begun, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), len(ShuffledQuestionCards), len(ShuffledAnswerCards), "{"+strconv.Itoa(User.ID)+"}", -1, -1, false, false, false, false, 1, false, 7, 7)
+	tx.Exec("INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, tzar_order, current_tzar, current_qcard, has_begun, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), len(ShuffledQuestionCards), len(ShuffledAnswerCards), "{"+strconv.Itoa(User.ID)+"}", User.ID, -1, false, false, false, false, 1, false, 7, 7)
 	err = tx.Commit()
 	if err != nil {
 		log.Printf("Game could not be created. ERROR: %v", err)
@@ -346,100 +343,100 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 }
 
 // This method begins an already created game.
-func (bot *CAHBot) BeginGame(ChatID string) {
+func (bot *CAHBot) BeginGame(GameID string) {
 	// If there is only one person in the game, the app will crash if we continue.
-	if len(bot.CurrentGames[ChatID].Players) < 2 {
-		log.Printf("We could not start the game because there aren't enough players to do so.  Only %v player. ", len(bot.CurrentGames[ChatID].Players))
-		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "There aren't enough people in the game to start it.  Please have others join using the '/join' command."))
+	if len(bot.CurrentGames[GameID].Players) < 2 {
+		log.Printf("We could not start the game because there aren't enough players to do so.  Only %v player. ", len(bot.CurrentGames[GameID].Players))
+		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "There aren't enough people in the game to start it.  Please have others join using the '/join' command."))
 	} else {
-		log.Printf("Starting game for Chat ID %v.", ChatID)
+		log.Printf("Starting game for Chat ID %v.", GameID)
 		// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasBegun = true.  This is a workaround.
-		tmp := bot.CurrentGames[ChatID]
+		tmp := bot.CurrentGames[GameID]
 		tmp.HasBegun = true
-		bot.CurrentGames[ChatID] = tmp
-		if DoWeHaveAllAnswers(bot.CurrentGames[ChatID].Players) {
-			log.Printf("Asking the Card Tzar, %v, to pick the best and/or worse answer.", bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarOrder[bot.CurrentGames[ChatID].CardTzarIndex]].Player)
-			bot.TzarChooseAnswer(ChatID)
+		bot.CurrentGames[GameID] = tmp
+		if DoWeHaveAllAnswers(bot.CurrentGames[GameID].Players) {
+			log.Printf("Asking the Card Tzar, %v, to pick the best and/or worse answer.", bot.CurrentGames[GameID].Players[bot.CurrentGames[GameID].CardTzarOrder[bot.CurrentGames[GameID].CardTzarIndex]].Player)
+			bot.TzarChooseAnswer(GameID)
 		} else {
-			bot.StartRound(ChatID)
+			bot.StartRound(GameID)
 		}
 	}
 }
 
 // This method handles the starting/resuming of a round.
-func (bot *CAHBot) StartRound(ChatID string) {
+func (bot *CAHBot) StartRound(GameID string) {
 	// Check to see if the game is running and if we are waiting for answers.
-	if bot.CurrentGames[ChatID].HasBegun {
-		if bot.CurrentGames[ChatID].WaitingForAnswers {
-			bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "We are waiting for other players to answer the question."))
+	if bot.CurrentGames[GameID].HasBegun {
+		if bot.CurrentGames[GameID].WaitingForAnswers {
+			bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "We are waiting for other players to answer the question."))
 		} else {
 			// Once we get here, we are either starting a game, resuming a game, or going onto another round.
 			// Check to see if someone won.
-			if winner, ans := DidSomeoneWin(bot.CurrentGames[ChatID]); ans {
+			if winner, ans := DidSomeoneWin(bot.CurrentGames[GameID]); ans {
 				// Someone won, so we end the game.
-				log.Printf("%v won the game with ID %v.", winner, ChatID)
-				bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "We have a winner!  Congratulations to "+winner.Player.String()+" on the victory.  We are now ending the game."))
-				bot.StopGame(ChatID)
+				log.Printf("%v won the game with ID %v.", winner, GameID)
+				bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "We have a winner!  Congratulations to "+winner.Player.String()+" on the victory.  We are now ending the game."))
+				bot.StopGame(GameID)
 			} else {
-				if bot.CurrentGames[ChatID].CardTzarIndex == -1 {
-					log.Printf("Start a new game for chat ID %v.", ChatID)
-					bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "Get ready.  We are starting the game!"))
-					bot.MoveCardTzar(ChatID)
+				if bot.CurrentGames[GameID].CardTzarIndex == -1 {
+					log.Printf("Start a new game for chat ID %v.", GameID)
+					bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "Get ready.  We are starting the game!"))
+					bot.MoveCardTzar(GameID)
 				}
-				if bot.CurrentGames[ChatID].QuestionCard == -1 {
-					bot.GetQuestionCard(ChatID)
-					bot.DisplayQuestionCard(ChatID)
+				if bot.CurrentGames[GameID].QuestionCard == -1 {
+					bot.GetQuestionCard(GameID)
+					bot.DisplayQuestionCard(GameID)
 				}
-				for _, value := range bot.CurrentGames[ChatID].Players {
+				for _, value := range bot.CurrentGames[GameID].Players {
 					if !value.IsCardTzar && value.AnswerBeingPlayed == "" {
 						log.Printf("Asking %v for an answer card.", value)
-						bot.ListCardsForUserWithMessage(ChatID, value, "Please pick an answer for the question.")
+						bot.ListCardsForUserWithMessage(GameID, value.Player.ID, "Please pick an answer for the question.")
 					}
 				}
 			}
 		}
 	} else {
-		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "The game is not currently running.  Use command '/resume' to start it up."))
+		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The game is not currently running.  Use command '/resume' to start it up."))
 	}
 }
 
 // This method pauses a started game.
-func (bot *CAHBot) PauseGame(ChatID string) {
-	log.Printf("Pausing game for Chat %v...", ChatID)
+func (bot *CAHBot) PauseGame(GameID string) {
+	log.Printf("Pausing game for Chat %v...", GameID)
 	// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasStarted = false.  This is a workaround.
-	tmp := bot.CurrentGames[ChatID]
+	tmp := bot.CurrentGames[GameID]
 	tmp.HasBegun = false
-	bot.CurrentGames[ChatID] = tmp
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "The game has been paused.  Use command '/resume' to resume."))
+	bot.CurrentGames[GameID] = tmp
+	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The game has been paused.  Use command '/resume' to resume."))
 }
 
 // This method stops and ends an already created game.
-func (bot *CAHBot) StopGame(ChatID string) {
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "The game has been stopped.  Here are the scores:\n"+bot.CurrentGames[ChatID].Scores()+"Thanks for playing!"))
-	log.Printf("Deleting a game with Chat ID %v...", ChatID)
-	delete(bot.CurrentGames, ChatID)
+func (bot *CAHBot) StopGame(GameID string) {
+	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The game has been stopped.  Here are the scores:\n"+GameScores(GameID, bot.db_conn)+"Thanks for playing!"))
+	log.Printf("Deleting a game with Chat ID %v...", GameID)
+	delete(bot.CurrentGames, GameID)
 }
 
 // Sends a message show the players the question card.
-func (bot *CAHBot) DisplayQuestionCard(ChatID string) {
-	log.Printf("Sending question card to game with ID %v...", ChatID)
+func (bot *CAHBot) DisplayQuestionCard(GameID string) {
+	log.Printf("Sending question card to game with ID %v...", GameID)
 	var message string = "Here is the question card:\n"
-	message += bot.AllQuestionCards[bot.CurrentGames[ChatID].QuestionCard].Text
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, html.UnescapeString(message)))
+	message += bot.AllQuestionCards[bot.CurrentGames[GameID].QuestionCard].Text
+	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, html.UnescapeString(message)))
 }
 
 // This method handles the Tzar choosing an answer.
-func (bot *CAHBot) TzarChooseAnswer(ChatID string) {
-	game := bot.CurrentGames[ChatID]
+func (bot *CAHBot) TzarChooseAnswer(GameID string) {
+	game := bot.CurrentGames[GameID]
 
 	game.CardTzarIndex = -1
-	bot.CurrentGames[ChatID] = game
+	bot.CurrentGames[GameID] = game
 
 }
 
 // This method asks the Card Tzar to make a choice.
-func (bot *CAHBot) GetQuestionCard(ChatID string) {
-	Game := bot.CurrentGames[ChatID]
+func (bot *CAHBot) GetQuestionCard(GameID string) {
+	Game := bot.CurrentGames[GameID]
 	Game.QuestionCard = Game.ShuffledQuestionCards[Game.NumQCardsLeft]
 	Game.NumQCardsLeft -= 1
 	Game.WaitingForAnswers = true
@@ -449,39 +446,34 @@ func (bot *CAHBot) GetQuestionCard(ChatID string) {
 		ReshuffleQCards(Game)
 	}
 	// This is the dumb Go map bug again.
-	bot.CurrentGames[ChatID] = Game
+	bot.CurrentGames[GameID] = Game
 }
 
 // This method lists a user's cards using a custom keyboard in the Telegram API.  If we need them to respond to a question, this is handled.
-func (bot *CAHBot) ListCardsForUserWithMessage(ChatID string, Player PlayerGameInfo, text string) {
-	log.Printf("Showing the user %v their cards.", Player.Player.String())
-	message := tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, text)
-	cards := make([][]string, len(bot.CurrentGames[ChatID].Players[strconv.Itoa(Player.Player.ID)].Cards))
+func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, UserID int, text string) {
+	log.Printf("Showing the user %v their cards.", UserID)
+	message := tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, text)
+	cards := make([][]string, len(bot.CurrentGames[GameID].Players[strconv.Itoa(UserID)].Cards))
 	for i := range cards {
 		cards[i] = make([]string, 1)
 	}
-	if Player.Player.UserName != "" {
-		message.Text += "@" + Player.Player.UserName
-	} else {
-		message.ReplyToMessageID = Player.ReplyID
-	}
-	for i := 0; i < len(bot.CurrentGames[ChatID].Players[strconv.Itoa(Player.Player.ID)].Cards); i++ {
-		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[bot.CurrentGames[ChatID].Players[strconv.Itoa(Player.Player.ID)].Cards[i]].Text)
+	for i := 0; i < len(bot.CurrentGames[GameID].Players[strconv.Itoa(UserID)].Cards); i++ {
+		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[bot.CurrentGames[GameID].Players[strconv.Itoa(UserID)].Cards[i]].Text)
 	}
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
 	bot.SendMessage(message)
 }
 
 // This method lists the answers for everyone and allows the Tzar to choose one.
-func (bot *CAHBot) ListAnswers(ChatID string) {
-	Tzar := bot.CurrentGames[ChatID].Players[bot.CurrentGames[ChatID].CardTzarOrder[bot.CurrentGames[ChatID].CardTzarIndex]]
-	cards := BuildAnswerList(bot.CurrentGames[ChatID])
+func (bot *CAHBot) ListAnswers(GameID string) {
+	Tzar := bot.CurrentGames[GameID].Players[bot.CurrentGames[GameID].CardTzarOrder[bot.CurrentGames[GameID].CardTzarIndex]]
+	cards := BuildAnswerList(bot.CurrentGames[GameID])
 	text := "Here are the submitted answers:\n\n"
 	for i := range cards {
 		text += cards[i][0] + "\n"
 	}
-	log.Printf("Showing everyone the answers submitted for game %v.", ChatID)
-	message := tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, text)
+	log.Printf("Showing everyone the answers submitted for game %v.", GameID)
+	message := tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, text)
 	bot.SendMessage(message)
 	if Tzar.Player.UserName != "" {
 		message.Text += "@" + Tzar.Player.UserName
@@ -493,16 +485,16 @@ func (bot *CAHBot) ListAnswers(ChatID string) {
 	bot.SendMessage(message)
 }
 
-func (bot *CAHBot) SendGameSettings(ChatID string) {
+func (bot *CAHBot) SendGameSettings(GameID string, ChatID int) {
 	log.Printf("Sending game settings for %v.", ChatID)
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "Game settings: \n"+bot.CurrentGames[ChatID].Settings.String()))
+	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "Game settings: \n"+bot.CurrentGames[GameID].Settings.String()))
 }
 
-func (bot *CAHBot) ChangeGameSettings(ChatID string) {
+func (bot *CAHBot) ChangeGameSettings(GameID string) {
 
 }
 
-func (bot *CAHBot) ReceiveFeedback(ChatID string) {
+func (bot *CAHBot) ReceiveFeedback(ChatID int) {
 
 }
 
@@ -520,7 +512,7 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User, ChatID int
 	err = tx.QueryRow("SELECT COUNT(*) FROM players WHERE game_id = $1", GameID).Scan(&numPlayersInGame)
 	if numPlayersInGame > 9 {
 		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Player limit of 10 reached, we can not add any more players."))
-	} else if bot.AddUserToDatabase(User, ChatID) {
+	} else {
 		var tmp string
 		row := tx.QueryRow("SELECT players.game_id FROM players, games WHERE players.game_id = $1 AND players.user_id = $2", GameID, User.ID)
 		if err := row.Scan(&tmp); err == nil {
@@ -531,8 +523,6 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User, ChatID int
 			tx.Commit()
 			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))
 		}
-	} else {
-		bot.SendActionFailedMessage(ChatID)
 	}
 }
 
@@ -564,20 +554,22 @@ func (bot *CAHBot) RemovePlayerFromGame(ChatID string, User tgbotapi.User) {
 	}
 }
 
-func (bot *CAHBot) MoveCardTzar(ChatID string) {
+func (bot *CAHBot) MoveCardTzar(GameID string) {
 	log.Printf("Switch the Card Tzar...")
-	Game := bot.CurrentGames[ChatID]
+	Game := bot.CurrentGames[GameID]
 	Game.CardTzarIndex = (Game.CardTzarIndex + 1)
 	if Game.CardTzarIndex >= len(Game.CardTzarOrder) {
 		Game.CardTzarIndex = Game.CardTzarIndex % len(Game.CardTzarOrder)
 		if Game.Settings.TradeInCardsEveryRound {
 			log.Printf("We are about to start a new round.  Letting the players trade in a card.")
-			for key := range Game.Players {
-				bot.ListCardsForUserWithMessage(ChatID, Game.Players[key], "Please choose "+strconv.Itoa(Game.Settings.NumCardsToTradeIn)+" card to trade in.")
+			for _ = range Game.Players {
+				// This just to get it to compile for now.
+				ChatID := 00000
+				bot.ListCardsForUserWithMessage(GameID, ChatID, "Please choose "+strconv.Itoa(Game.Settings.NumCardsToTradeIn)+" card to trade in.")
 			}
 		}
 	}
 	log.Printf("The Card Tzar is now %v.", Game.Players[Game.CardTzarOrder[Game.CardTzarIndex]].Player)
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "The Card Tzar is now "+Game.Players[Game.CardTzarOrder[Game.CardTzarIndex]].Player.String()))
-	bot.CurrentGames[ChatID] = Game
+	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The Card Tzar is now "+Game.Players[Game.CardTzarOrder[Game.CardTzarIndex]].Player.String()))
+	bot.CurrentGames[GameID] = Game
 }
