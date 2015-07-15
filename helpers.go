@@ -24,7 +24,13 @@ func GetRandomID() string {
 // This function gets the GameID for a player.
 func GetGameID(UserID int, db *sql.DB) (string, error) {
 	var GameID string
-	err := db.QueryRow("SELECT game_id FROM players WHERE user_id = $1", UserID).Scan(&GameID)
+	tx, err := db.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return "", err
+	}
+	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
 	return GameID, err
 
 }
