@@ -10,7 +10,6 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // This is the starting point for handling an update from chat.
@@ -324,7 +323,7 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) bool {
 	_ = tx.QueryRow("SELECT does_user_exist($1)", User.ID).Scan(&exists)
 	if !exists {
 		log.Printf("Adding user with ID %v to the database.", User.ID)
-		_, err = tx.Exec("INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_tzar, current_answer) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", User.ID, User.FirstName, User.LastName, User.UserName, User.String(), 0, nil, false, "")
+		_, err = tx.Exec("SELECT add_user($1,$2,$3,$4,$5)", User.ID, User.FirstName, User.LastName, User.UserName, User.String())
 		if err != nil {
 			log.Printf("ERROR: %v", err)
 			bot.SendActionFailedMessage(User.ID)
@@ -340,7 +339,6 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) bool {
 
 // This method creates a new game.
 func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
-	layout := "2006-01-02 15:04:05"
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
@@ -374,7 +372,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 		bot.SendActionFailedMessage(ChatID)
 		return ""
 	}
-	tx.Exec("INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, tzar_order, current_tzar, current_qcard, has_begun, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win, last_modified) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), len(ShuffledQuestionCards), len(ShuffledAnswerCards), "{"+strconv.Itoa(User.ID)+"}", User.ID, -1, false, false, false, false, 1, false, 7, 7, time.Now().Format(layout))
+	tx.Exec("SELECT add_game($1,$2,$3,$4)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), User.ID)
 	err = tx.Commit()
 	if err != nil {
 		log.Printf("Game could not be created. ERROR: %v", err)
@@ -562,7 +560,7 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 			bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are already playing in this game.  Use command '/leave' to remove yourself."))
 		} else {
 			log.Printf("Adding %v to the game %v...", User, GameID)
-			tx.Exec("INSERT INTO players(game_id, user_id) VALUES($1, $2)", GameID, User.ID)
+			tx.Exec("SELECT add_player_to_game($1, $2)", GameID, User.ID)
 			if tx.Commit() != nil {
 				log.Printf("ERROR %T: %v", err, err)
 				bot.SendActionFailedMessage(User.ID)

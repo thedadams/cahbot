@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,7 +42,7 @@ func ArrayTransforForPostgres(theArray []int) string {
 	for item := range theArray {
 		value += strconv.Itoa(theArray[item]) + ","
 	}
-	value = value[:len(value)-1] + "}"
+	value = value[0:len(value)-1] + "}"
 	return value
 }
 
@@ -49,17 +50,18 @@ func ArrayTransforForPostgres(theArray []int) string {
 func GameScores(GameID string, db *sql.DB) string {
 	var str string = ""
 	// Write a stored procedure for this query
-	rows, err := db.Query("SELECT users.display_name, users.points FROM users, players WHERE players.game_id = $1", GameID)
+	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
 	defer rows.Close()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return "ERROR"
 	}
 	for rows.Next() {
-		var name string
-		var points int
-		if err := rows.Scan(&name, &points); err == nil {
-			str += name + " - " + strconv.Itoa(points) + "\n"
+		var response string
+		if err := rows.Scan(&response); err == nil {
+			log.Print(response)
+			arrResponse := strings.Split(response[1:len(response)-1], ",")
+			str += arrResponse[0] + " - " + arrResponse[1] + "\n"
 		} else {
 			log.Printf("ERROR: %v", err)
 			return "ERROR"
