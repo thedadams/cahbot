@@ -221,6 +221,12 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You did not enter a game id.  Try again with the format '/join <id>'."))
 		}
+	case "gameid":
+		if GameID != "" {
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game you are currently playing has id "+GameID+".  Others can join your game by using the command '/join "+GameID+"'."))
+		} else {
+			bot.SendNoGameMessage(m.Chat.ID)
+		}
 	case "leave":
 		if GameID != "" {
 			bot.RemovePlayerFromGame(GameID, m.From)

@@ -46,9 +46,9 @@ func ArrayTransforForPostgres(theArray []int) string {
 }
 
 // Get the scores for a game.
-// TODO: Needs to be rewritten using database.
 func GameScores(GameID string, db *sql.DB) string {
 	var str string = ""
+	// Write a stored procedure for this query
 	rows, err := db.Query("SELECT users.display_name, users.points FROM users, players WHERE players.game_id = $1", GameID)
 	defer rows.Close()
 	if err != nil {
