@@ -4,12 +4,13 @@ import (
 	"cahbot/secrets"
 	"cahbot/tgbotapi"
 	"crypto/sha512"
-	"database/sql"
+	_ "database/sql"
 	"encoding/base64"
 	"html"
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // This is the starting point for handling an update from chat.
@@ -22,7 +23,7 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 		bot.ProccessCommand(&update.Message, GameID)
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
 		if err != nil {
-			bot.SendMessage(tgbotapi.NewMessage(update.Message.Chat.ID, "It seems that you are not involved in any game so your message fell on death ears."))
+			bot.SendMessage(tgbotapi.NewMessage(update.Message.Chat.ID, "It seems that you are not involved in any game so your message fell on deaf ears."))
 		} else {
 			bot.ForwardMessageToGame(&update.Message, GameID)
 		}
@@ -31,7 +32,13 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 
 // This method forwards a message from a player to the rest of the group.
 func (bot *CAHBot) SendMessageToGame(GameID, message string) {
-	rows, err := bot.db_conn.Query("SELECT users.chat_id FROM users, games, players WHERE players.game_id = $1", GameID)
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
+	rows, err := bot.db_conn.Query("SELECT get_userids_for_game($1)", GameID)
 	defer rows.Close()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
@@ -52,18 +59,25 @@ func (bot *CAHBot) SendMessageToGame(GameID, message string) {
 
 // This method forwards a message from a player to the rest of the group.
 func (bot *CAHBot) ForwardMessageToGame(m *tgbotapi.Message, GameID string) {
-	rows, err := bot.db_conn.Query("SELECT users.chat_id FROM users, games, players WHERE players.game_id = $1 AND players.user_id != $2", GameID, m.From.ID)
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(m.From.ID)
+		return
+	}
+	rows, err := bot.db_conn.Query("SELECT get_userids_for_game($1)", GameID)
 	defer rows.Close()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		bot.SendActionFailedMessage(m.Chat.ID)
+		bot.SendActionFailedMessage(m.From.ID)
 		return
 	}
 	var ID int
 	for rows.Next() {
 		if err := rows.Scan(&ID); err != nil {
 			log.Printf("ERROR: %v", err)
-		} else {
+		} else if ID != m.From.ID {
 			bot.ForwardMessage(tgbotapi.NewForward(ID, m.Chat.ID, m.MessageID))
 		}
 	}
@@ -146,9 +160,8 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	// Get the command.
 	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
 	case "start":
-		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  If you create a game, you will be given a 6 character id you can share with friends so they can join you.  You can also join a game using the '/join <id>' command where the '<id>' is replaced with a game id created by someone else.  To see all available commands, use '/help'."))
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  If you create a game, you will be given a 5 character id you can share with friends so they can join you.  You can also join a game using the '/join <id>' command where the '<id>' is replaced with a game id created by someone else.  To see all available commands, use '/help'."))
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "While you are in a game, any (non-command) message you send to me will be automatically forwarded to everyone else in the game so you're all in the loop."))
-		log.Printf("Adding user with ID %v to the database.", m.From.ID)
 	case "help":
 		// TODO: use helpers to build a help message.
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "A help message should go here."))
@@ -158,8 +171,8 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			ID := bot.CreateNewGame(m.Chat.ID, m.From)
 			if ID != "" {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game was created successfully.  Tell your friends to use the command '/join "+ID+"' to join your game."))
-				bot.AddPlayerToGame(ID, m.From, m.Chat.ID, true)
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game was created successfully.  Tell your friends to use the command '/join "+ID+"' to join your game.  Remember that your game will be deleted after 2 days of inactivity."))
+				bot.AddPlayerToGame(ID, m.From)
 			} else {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "An error occurred while trying to create the game.  The game was not created."))
 			}
@@ -189,10 +202,18 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 			} else {
 				// If the user is not part of another game, we check to see if they id they
 				// game is valid.
-				row := bot.db_conn.QueryRow("SELECT id FROM games WHERE id = $1", strings.Fields(m.Text)[1])
-				if err := row.Scan(&GameID); err == nil {
+				tx, err := bot.db_conn.Begin()
+				defer tx.Rollback()
+				if err != nil {
+					log.Printf("ERROR: %v", err)
+					bot.SendActionFailedMessage(m.Chat.ID)
+					return
+				}
+				var exists bool
+				row := tx.QueryRow("SELECT check_game_exists($1)", strings.Fields(m.Text)[1])
+				if _ = row.Scan(&exists); exists {
 					// The id is valid and we add them.
-					bot.AddPlayerToGame(GameID, m.From, m.Chat.ID, false)
+					bot.AddPlayerToGame(strings.Fields(m.Text)[1], m.From)
 				} else {
 					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game with id "+strings.Fields(m.Text)[1]+".  Please try again with a new id or use '/create' to create a game."))
 				}
@@ -239,8 +260,15 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	case "whoistzar":
 		if GameID != "" {
 			var Tzar string
-			row := bot.db_conn.QueryRow("SELECT users.display_name FROM players, games, users WHERE games.id = $1 AND players.game_id = games.id AND players.user_id = games.current_tzar", GameID)
-			if err := row.Scan(&Tzar); err != nil {
+			tx, err := bot.db_conn.Begin()
+			defer tx.Rollback()
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(m.Chat.ID)
+				return
+			}
+			err = tx.QueryRow("SELECT whoistzar($1)", GameID).Scan(&Tzar)
+			if err != nil {
 				log.Printf("ERROR: %v", err)
 				bot.SendActionFailedMessage(m.Chat.ID)
 				return
@@ -280,39 +308,46 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 // This method adds a user to the database. It does not link them to a game.
 func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) bool {
 	// Check to see if the user is already in the database.
-	var OldChatID int
+	var exists bool
 	tx, err := bot.db_conn.Begin()
-	defer tx.Commit()
+	defer tx.Rollback()
 	if err != nil {
 		log.Printf("Cannot connect to the database.")
 		return false
 	}
-	err = tx.QueryRow("SELECT chat_id FROM users WHERE id=$1", User.ID).Scan(&OldChatID)
-	switch {
-	case err == sql.ErrNoRows:
-		// The user is not in the database so we add them.
-		tx.Exec("INSERT INTO users (id, first_name, last_name, username, display_name, chat_id, points, cards_in_hand, current_tzar, current_answer) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9, $10)", User.ID, User.FirstName, User.LastName, User.UserName, User.String(), ChatID, 0, nil, false, "")
+	_ = tx.QueryRow("SELECT does_user_exist($1)", User.ID).Scan(&exists)
+	if !exists {
+		log.Printf("Adding user with ID %v to the database.", User.ID)
+		_, err = tx.Exec("INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_tzar, current_answer) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", User.ID, User.FirstName, User.LastName, User.UserName, User.String(), 0, nil, false, "")
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendActionFailedMessage(User.ID)
+			return false
+		}
+		tx.Commit()
 		return true
-	case err != nil:
-		// An unknown error occurred.
-		log.Printf("ERROR %T: %v", err, err)
-		return false
-	default:
+	} else {
 		log.Printf("User with id %v is already in the database.", User.ID)
-		tx.Exec("UPDATE users SET chat_id=$1 WHERE id=$2", ChatID, User.ID)
 	}
 	return true
 }
 
 // This method creates a new game.
 func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
+	layout := "2006-01-02 15:04:05"
 	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(ChatID)
+		return ""
+	}
 	var GameID string
 	for {
 		GameID = GetRandomID()
-		var tmp string
-		err := tx.QueryRow("SELECT id FROM games WHERE id=$1", GameID).Scan(&tmp)
-		if err == sql.ErrNoRows {
+		var tmp bool
+		_ = tx.QueryRow("SELECT check_game_exists($1)", GameID).Scan(&tmp)
+		if !tmp {
 			break
 		}
 	}
@@ -330,12 +365,14 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 	shuffle(ShuffledAnswerCards)
 	if err != nil {
 		log.Printf("Error creating game: %v", err)
+		bot.SendActionFailedMessage(ChatID)
 		return ""
 	}
-	tx.Exec("INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, tzar_order, current_tzar, current_qcard, has_begun, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), len(ShuffledQuestionCards), len(ShuffledAnswerCards), "{"+strconv.Itoa(User.ID)+"}", User.ID, -1, false, false, false, false, 1, false, 7, 7)
+	tx.Exec("INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, tzar_order, current_tzar, current_qcard, has_begun, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win, last_modified) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), len(ShuffledQuestionCards), len(ShuffledAnswerCards), "{"+strconv.Itoa(User.ID)+"}", User.ID, -1, false, false, false, false, 1, false, 7, 7, time.Now().Format(layout))
 	err = tx.Commit()
 	if err != nil {
 		log.Printf("Game could not be created. ERROR: %v", err)
+		bot.SendActionFailedMessage(ChatID)
 		return ""
 	}
 	log.Printf("Game with id %v created successfully!", GameID)
@@ -499,29 +536,33 @@ func (bot *CAHBot) ReceiveFeedback(ChatID int) {
 }
 
 // Add a player to a game if the player is not playing.
-func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User, ChatID int, MakeTzar bool) {
+func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 	// This is supposed to check that there are not more than 10 players in a game.
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		bot.SendActionFailedMessage(ChatID)
+		bot.SendActionFailedMessage(User.ID)
 		return
 	}
 	var numPlayersInGame int
-	err = tx.QueryRow("SELECT COUNT(*) FROM players WHERE game_id = $1", GameID).Scan(&numPlayersInGame)
-	if numPlayersInGame > 9 {
-		bot.SendMessage(tgbotapi.NewMessage(ChatID, "Player limit of 10 reached, we can not add any more players."))
+	err = tx.QueryRow("SELECT num_players_in_game($1)", GameID).Scan(&numPlayersInGame)
+	if numPlayersInGame > 10 {
+		bot.SendMessage(tgbotapi.NewMessage(User.ID, "Player limit of 10 reached, we can not add any more players."))
 	} else {
-		var tmp string
-		row := tx.QueryRow("SELECT players.game_id FROM players, games WHERE players.game_id = $1 AND players.user_id = $2", GameID, User.ID)
-		if err := row.Scan(&tmp); err == nil {
-			bot.SendMessage(tgbotapi.NewMessage(ChatID, "You are already playing in this game.  Use command '/leave' to remove yourself."))
+		var tmp bool
+		row := tx.QueryRow("SELECT is_player_in_game($2,$1)", GameID, User.ID)
+		if _ = row.Scan(&tmp); tmp {
+			bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are already playing in this game.  Use command '/leave' to remove yourself."))
 		} else {
 			log.Printf("Adding %v to the game %v...", User, GameID)
-			tx.Exec("INSERT INTO players(game_id, user_id) VALUES($1, $2) ", GameID, User.ID)
-			tx.Commit()
-			bot.SendMessage(tgbotapi.NewMessage(ChatID, "Welcome to the game, "+User.String()+"!"))
+			tx.Exec("INSERT INTO players(game_id, user_id) VALUES($1, $2)", GameID, User.ID)
+			if tx.Commit() != nil {
+				log.Printf("ERROR %T: %v", err, err)
+				bot.SendActionFailedMessage(User.ID)
+				return
+			}
+			bot.SendMessageToGame(GameID, User.String()+" has joined the game!")
 		}
 	}
 }
