@@ -182,9 +182,9 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
-	case "stop":
+	case "end":
 		if GameID != "" {
-			bot.StopGame(GameID)
+			bot.EndGame(GameID, m.From)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -417,7 +417,7 @@ func (bot *CAHBot) StartRound(GameID string) {
 				// Someone won, so we end the game.
 				log.Printf("%v won the game with ID %v.", winner, GameID)
 				bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "We have a winner!  Congratulations to "+winner.Player.String()+" on the victory.  We are now ending the game."))
-				bot.StopGame(GameID)
+				bot.EndGame(GameID, tgbotapi.User{ID: -1})
 			} else {
 				if bot.CurrentGames[GameID].CardTzarIndex == -1 {
 					log.Printf("Start a new game for chat ID %v.", GameID)
@@ -452,10 +452,30 @@ func (bot *CAHBot) PauseGame(GameID string) {
 }
 
 // This method stops and ends an already created game.
-func (bot *CAHBot) StopGame(GameID string) {
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The game has been stopped.  Here are the scores:\n"+GameScores(GameID, bot.db_conn)+"Thanks for playing!"))
-	log.Printf("Deleting a game with Chat ID %v...", GameID)
-	delete(bot.CurrentGames, GameID)
+func (bot *CAHBot) EndGame(GameID string, User tgbotapi.User) {
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "There was an error when I tried to end the game.  You can try again or contact my developer @thedadams.")
+		return
+	}
+	log.Printf("Deleting a game with id %v...", GameID)
+	rows, err := tx.Query("SELECT end_game($1)", GameID)
+	defer rows.Close()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "There was an error when I tried to end the game.  You can try again or contact my developer @thedadams.")
+		return
+	}
+	if User.ID != -1 {
+		// Someone ended the game.
+		bot.SendMessageToGame(GameID, "The game has been stopped "+User.String()+".  Here are the scores:\n"+BuildScoreList(rows)+"Thanks for playing!")
+	} else {
+		// The game ended because someone won.
+		bot.SendMessageToGame(GameID, "The game has ended.  Here are the scores:\n"+BuildScoreList(rows)+"Thanks for playing!")
+	}
+	tx.Commit()
 }
 
 // Sends a message show the players the question card.
@@ -572,30 +592,35 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 }
 
 // Remove a player from a game if the player is playing.
-func (bot *CAHBot) RemovePlayerFromGame(ChatID string, User tgbotapi.User) {
-	if value, ok := bot.CurrentGames[ChatID].Players[strconv.Itoa(User.ID)]; ok {
-		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "Thanks for playing, "+User.String()+"!  You collected "+strconv.Itoa(value.Points)+" cards."))
-		log.Printf("Removing %v from the game %v...", User, ChatID)
-		for i := 0; i < len(bot.CurrentGames[ChatID].CardTzarOrder); i++ {
-			if bot.CurrentGames[ChatID].CardTzarOrder[i] == strconv.Itoa(User.ID) {
-				// This is a workaround because go assignments inside a map don't work.
-				game := bot.CurrentGames[ChatID]
-				game.CardTzarOrder = append(bot.CurrentGames[ChatID].CardTzarOrder[:i], bot.CurrentGames[ChatID].CardTzarOrder[i+1:]...)
-				bot.CurrentGames[ChatID] = game
-				break
-			}
-		}
-		if bot.CurrentGames[ChatID].Players[strconv.Itoa(User.ID)].IsCardTzar {
-			bot.MoveCardTzar(ChatID)
-		}
-		delete(bot.CurrentGames[ChatID].Players, strconv.Itoa(User.ID))
-		if len(bot.CurrentGames[ChatID].Players) == 0 {
-			log.Printf("There are no more players in game %v.  We shall end it.", ChatID)
-			bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, "There are no more people playing in this game. We are going to end it."))
-			bot.StopGame(ChatID)
-		}
-	} else {
-		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[ChatID].ChatID, User.String()+" is not playing yet.  Use command '/add' to add yourself."))
+func (bot *CAHBot) RemovePlayerFromGame(GameID string, User tgbotapi.User) {
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(User.ID)
+		return
+	}
+	log.Printf("Removing %v from the game %v...", User, GameID)
+	var str string = ""
+	err = tx.QueryRow("SELECT remove_player_from_game($1)", User.ID).Scan(&str)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(User.ID)
+		return
+	}
+	bot.SendMessage(tgbotapi.NewMessage(User.ID, "Thanks for playing, "+User.String()+"!  You collected "+strings.Split(str[1:len(str)-1], ",")[1]+" cards."))
+	// Now check to see if there is anyone still in the game.
+	var numPlayersInGame int
+	err = tx.QueryRow("SELECT num_players_in_game($1)", GameID).Scan(&numPlayersInGame)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		tx.Commit()
+		return
+	}
+	tx.Commit()
+	if numPlayersInGame == 0 {
+		log.Printf("There are no more players in game with id %v.  We shall end it.", GameID)
+		bot.EndGame(GameID, User)
 	}
 }
 

@@ -48,7 +48,6 @@ func ArrayTransforForPostgres(theArray []int) string {
 
 // Get the scores for a game.
 func GameScores(GameID string, db *sql.DB) string {
-	var str string = ""
 	// Write a stored procedure for this query
 	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
 	defer rows.Close()
@@ -56,6 +55,12 @@ func GameScores(GameID string, db *sql.DB) string {
 		log.Printf("ERROR: %v", err)
 		return "ERROR"
 	}
+	return BuildScoreList(rows)
+}
+
+// This builds the score list from a return sql.Rows.
+func BuildScoreList(rows *sql.Rows) string {
+	var str string = ""
 	for rows.Next() {
 		var response string
 		if err := rows.Scan(&response); err == nil {
