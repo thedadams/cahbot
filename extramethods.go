@@ -176,6 +176,29 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "An error occurred while trying to create the game.  The game was not created."))
 			}
 		}
+	case "remove":
+		tx, err := bot.db_conn.Begin()
+		defer tx.Rollback()
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendActionFailedMessage(m.Chat.ID)
+			return
+		}
+		// If the user is in a game, we remove them.
+		if GameID != "" {
+			bot.RemovePlayerFromGame(GameID, m.From)
+		}
+		log.Printf("Removing user from the database.")
+		_, err = tx.Exec("SELECT remove_user($1)", m.From.ID)
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendActionFailedMessage(m.Chat.ID)
+			return
+		}
+		tx.Commit()
+
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You have been removed from our records. If you ever want to come back, send the command '/start'.  Thank you for playing."))
+
 	case "begin", "resume":
 		if GameID != "" {
 			bot.BeginGame(GameID)
@@ -621,6 +644,8 @@ func (bot *CAHBot) RemovePlayerFromGame(GameID string, User tgbotapi.User) {
 	if numPlayersInGame == 0 {
 		log.Printf("There are no more players in game with id %v.  We shall end it.", GameID)
 		bot.EndGame(GameID, User)
+	} else {
+		bot.SendMessageToGame(GameID, User.String()+" has left the game with a score of "+strings.Split(str[1:len(str)-1], ",")[1]+".")
 	}
 }
 
