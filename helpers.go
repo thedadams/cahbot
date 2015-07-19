@@ -10,32 +10,6 @@ import (
 	"time"
 )
 
-// Creates a random string for a Game ID.
-func GetRandomID() string {
-	var id string = ""
-	characters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "!", "#", "$", "@", "?", "-", "&", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-	n := len(characters)
-	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < 5; i++ {
-		id += characters[rand.Intn(n)]
-	}
-	return id
-}
-
-// This function gets the GameID for a player.
-func GetGameID(UserID int, db *sql.DB) (string, error) {
-	var GameID string
-	tx, err := db.Begin()
-	defer tx.Rollback()
-	if err != nil {
-		log.Printf("ERROR: %v", err)
-		return "", err
-	}
-	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
-	return GameID, err
-
-}
-
 // Transforms an array for input into postges database.
 func ArrayTransforForPostgres(theArray []int) string {
 	value := "{"
@@ -46,16 +20,19 @@ func ArrayTransforForPostgres(theArray []int) string {
 	return value
 }
 
-// Get the scores for a game.
-func GameScores(GameID string, db *sql.DB) string {
-	// Write a stored procedure for this query
-	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
-	defer rows.Close()
-	if err != nil {
-		log.Printf("ERROR: %v", err)
-		return "ERROR"
+// This function builds the list of submitted answers to be available for the players.
+func BuildAnswerList(Game CAHGame) [][]string {
+	answers := make([][]string, len(Game.Players))
+	for i := range answers {
+		answers[i] = make([]string, 1)
 	}
-	return BuildScoreList(rows)
+	i := 0
+	for _, value := range Game.Players {
+		answers[i][0] = html.UnescapeString(value.AnswerBeingPlayed)
+		i++
+	}
+	ShuffleAnswers(answers)
+	return answers
 }
 
 // This builds the score list from a return sql.Rows.
@@ -73,6 +50,79 @@ func BuildScoreList(rows *sql.Rows) string {
 		}
 	}
 	return str
+}
+
+// This function will deal a player's hand or add cards to the player's hand
+func DealPlayerHand(Game CAHGame, Hand []int) []int {
+	for len(Hand) < Game.Settings.NumCardsInHand {
+		log.Printf("Dealing card %v to user.", Game.NumACardsLeft)
+		Hand = append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
+		Game.NumACardsLeft -= 1
+		if Game.NumACardsLeft == -1 {
+			ReshuffleACards(Game)
+		}
+	}
+	return Hand
+}
+
+// This function goes through a game and determines if someone has won.
+func DidSomeoneWin(Game CAHGame) (PlayerGameInfo, bool) {
+	for _, value := range Game.Players {
+		if value.Points == Game.Settings.NumPointsToWin {
+			return value, true
+		}
+	}
+	return PlayerGameInfo{}, false
+}
+
+// Get the scores for a game.
+func GameScores(GameID string, db *sql.DB) string {
+	// Write a stored procedure for this query
+	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
+	defer rows.Close()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return "ERROR"
+	}
+	return BuildScoreList(rows)
+}
+
+// This function gets the GameID for a player.
+func GetGameID(UserID int, db *sql.DB) (string, error) {
+	var GameID string
+	tx, err := db.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return "", err
+	}
+	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
+	return GameID, err
+
+}
+
+// Creates a random string for a Game ID.
+func GetRandomID() string {
+	var id string = ""
+	characters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "!", "#", "$", "@", "?", "-", "&", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	n := len(characters)
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < 5; i++ {
+		id += characters[rand.Intn(n)]
+	}
+	return id
+}
+
+//This function reshuffles the answer cards of a game.
+func ReshuffleACards(Game CAHGame) {
+	shuffle(Game.ShuffledAnswerCards)
+	Game.NumACardsLeft = len(Game.ShuffledAnswerCards) - 1
+}
+
+//This function reshuffles the question cards of a game.
+func ReshuffleQCards(Game CAHGame) {
+	shuffle(Game.ShuffledQuestionCards)
+	Game.NumQCardsLeft = len(Game.ShuffledQuestionCards) - 1
 }
 
 // Get the settings for a game.
@@ -118,64 +168,4 @@ func ShuffleAnswers(arr [][]string) {
 		j := rand.Intn(i)
 		arr[i], arr[j] = arr[j], arr[i]
 	}
-}
-
-// This function checks to see if we have answer cards from all the players.
-func DoWeHaveAllAnswers(Players map[string]PlayerGameInfo) bool {
-	for _, value := range Players {
-		if !value.IsCardTzar && value.AnswerBeingPlayed == "" {
-			return false
-		}
-	}
-	return true
-}
-
-// This function will deal a player's hand or add cards to the player's hand
-func DealPlayerHand(Game CAHGame, Hand []int) []int {
-	for len(Hand) < Game.Settings.NumCardsInHand {
-		log.Printf("Dealing card %v to user.", Game.NumACardsLeft)
-		Hand = append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
-		Game.NumACardsLeft -= 1
-		if Game.NumACardsLeft == -1 {
-			ReshuffleACards(Game)
-		}
-	}
-	return Hand
-}
-
-//This function reshuffles the answer cards of a game.
-func ReshuffleACards(Game CAHGame) {
-	shuffle(Game.ShuffledAnswerCards)
-	Game.NumACardsLeft = len(Game.ShuffledAnswerCards) - 1
-}
-
-//This function reshuffles the question cards of a game.
-func ReshuffleQCards(Game CAHGame) {
-	shuffle(Game.ShuffledQuestionCards)
-	Game.NumQCardsLeft = len(Game.ShuffledQuestionCards) - 1
-}
-
-// This function goes through a game and determines if someone has won.
-func DidSomeoneWin(Game CAHGame) (PlayerGameInfo, bool) {
-	for _, value := range Game.Players {
-		if value.Points == Game.Settings.NumPointsToWin {
-			return value, true
-		}
-	}
-	return PlayerGameInfo{}, false
-}
-
-// This function builds the list of submitted answers to be available for the players.
-func BuildAnswerList(Game CAHGame) [][]string {
-	answers := make([][]string, len(Game.Players))
-	for i := range answers {
-		answers[i] = make([]string, 1)
-	}
-	i := 0
-	for _, value := range Game.Players {
-		answers[i][0] = html.UnescapeString(value.AnswerBeingPlayed)
-		i++
-	}
-	ShuffleAnswers(answers)
-	return answers
 }

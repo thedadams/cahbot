@@ -383,22 +383,41 @@ func (bot *CAHBot) AddUserToDatabase(User tgbotapi.User, ChatID int) bool {
 
 // This method begins an already created game.
 func (bot *CAHBot) BeginGame(GameID string) {
-	// If there is only one person in the game, the app will crash if we continue.
-	if len(bot.CurrentGames[GameID].Players) < 2 {
-		log.Printf("We could not start the game because there aren't enough players to do so.  Only %v player. ", len(bot.CurrentGames[GameID].Players))
-		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "There aren't enough people in the game to start it.  Please have others join using the '/join' command."))
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "We could not start the game because of an internal error.")
+		return
+	}
+	// Check to see if there are more than 2 players.
+	var tmp int
+	err = tx.QueryRow("SELECT num_players_in_game($1)", GameID).Scan(&tmp)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "We could not start the game because of an internal error.")
+		return
+	}
+	if tmp < 3 {
+		log.Printf("There aren't enough players in game with id " + GameID + " to start it.")
+		tx.Rollback()
+		bot.SendMessageToGame(GameID, "You really need at least 3 players to make it interesting.  Right now, you have "+strconv.Itoa(tmp)+".  Tell others to use the command '/join "+GameID+"' to join your game.")
+		return
+	}
+	log.Printf("Trying to start game with id %v.", GameID)
+	err = tx.QueryRow("SELECT start_game($1)", GameID).Scan(&tmp)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "We could not start the game because of an internal error.")
+		return
+	}
+	// At this point we commit the starting of the game.
+	tx.Commit()
+	if tmp == 1 {
+		log.Printf("Asking the Card Tzar to pick the best and/or worse answer.")
+		bot.TzarChooseAnswer(GameID)
 	} else {
-		log.Printf("Starting game for Chat ID %v.", GameID)
-		// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasBegun = true.  This is a workaround.
-		tmp := bot.CurrentGames[GameID]
-		tmp.HasBegun = true
-		bot.CurrentGames[GameID] = tmp
-		if DoWeHaveAllAnswers(bot.CurrentGames[GameID].Players) {
-			log.Printf("Asking the Card Tzar, %v, to pick the best and/or worse answer.", bot.CurrentGames[GameID].Players[bot.CurrentGames[GameID].CardTzarOrder[bot.CurrentGames[GameID].CardTzarIndex]].Player)
-			bot.TzarChooseAnswer(GameID)
-		} else {
-			bot.StartRound(GameID)
-		}
+		bot.StartRound(GameID)
 	}
 }
 
@@ -454,7 +473,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 
 // Sends a message show the players the question card.
 func (bot *CAHBot) DisplayQuestionCard(GameID string) {
-	log.Printf("Getting question card index for game with id %v", GamID)
+	log.Printf("Getting question card index for game with id %v", GameID)
 	tx, err := bot.db_conn.Begin()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
