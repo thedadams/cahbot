@@ -343,7 +343,12 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 			bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are already playing in this game.  Use command '/leave' to remove yourself."))
 		} else {
 			log.Printf("Adding %v to the game %v...", User, GameID)
-			tx.Exec("SELECT add_player_to_game($1, $2)", GameID, User.ID)
+			_, err = tx.Exec("SELECT add_player_to_game($1, $2)", GameID, User.ID)
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(User.ID)
+				return
+			}
 			if tx.Commit() != nil {
 				log.Printf("ERROR %T: %v", err, err)
 				bot.SendActionFailedMessage(User.ID)
@@ -449,12 +454,10 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 	for i := 0; i < len(ShuffledQuestionCards); i++ {
 		ShuffledQuestionCards[i] = i
 	}
-	shuffle(ShuffledQuestionCards)
 	ShuffledAnswerCards := make([]int, len(bot.AllAnswerCards))
 	for i := 0; i < len(ShuffledAnswerCards); i++ {
 		ShuffledAnswerCards[i] = i
 	}
-	shuffle(ShuffledAnswerCards)
 	if err != nil {
 		log.Printf("Error creating game: %v", err)
 		bot.SendActionFailedMessage(ChatID)
