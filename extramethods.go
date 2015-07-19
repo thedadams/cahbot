@@ -454,10 +454,23 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 
 // Sends a message show the players the question card.
 func (bot *CAHBot) DisplayQuestionCard(GameID string) {
+	log.Printf("Getting question card index for game with id %v", GamID)
+	tx, err := bot.db_conn.Begin()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
+	var index int
+	err = tx.QueryRow("SELECT get_question_card($1)", GameID).Scan(&index)
+	tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
 	log.Printf("Sending question card to game with ID %v...", GameID)
 	var message string = "Here is the question card:\n"
-	message += bot.AllQuestionCards[bot.CurrentGames[GameID].QuestionCard].Text
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, html.UnescapeString(message)))
+	message += bot.AllQuestionCards[index].Text
+	bot.SendMessageToGame(GameID, html.UnescapeString(message))
 }
 
 // This method stops and ends an already created game.
