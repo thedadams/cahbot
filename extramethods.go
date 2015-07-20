@@ -196,10 +196,9 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 			return
 		}
 		tx.Commit()
-
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You have been removed from our records. If you ever want to come back, send the command '/start'.  Thank you for playing."))
 
-	case "begin", "resume":
+	case "begin":
 		if GameID != "" {
 			bot.BeginGame(GameID)
 		} else {
@@ -208,12 +207,6 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	case "end":
 		if GameID != "" {
 			bot.EndGame(GameID, m.From)
-		} else {
-			bot.SendNoGameMessage(m.Chat.ID)
-		}
-	case "pause":
-		if GameID != "" {
-			bot.PauseGame(GameID)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -305,8 +298,6 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
-	case "feedback":
-		bot.ReceiveFeedback(m.Chat.ID)
 	case "logging":
 		if len(strings.Fields(m.Text)) > 1 {
 			hasher := sha512.New()
@@ -522,21 +513,6 @@ func (bot *CAHBot) EndGame(GameID string, User tgbotapi.User) {
 	tx.Commit()
 }
 
-// This method asks the Card Tzar to make a choice.
-func (bot *CAHBot) GetQuestionCard(GameID string) {
-	Game := bot.CurrentGames[GameID]
-	Game.QuestionCard = Game.ShuffledQuestionCards[Game.NumQCardsLeft]
-	Game.NumQCardsLeft -= 1
-	Game.WaitingForAnswers = true
-	log.Printf("The question card is %v: %v", Game.QuestionCard, bot.AllQuestionCards[Game.QuestionCard])
-	if Game.NumQCardsLeft == -1 {
-		log.Printf("Reshuffling question cards...")
-		ReshuffleQCards(Game)
-	}
-	// This is the dumb Go map bug again.
-	bot.CurrentGames[GameID] = Game
-}
-
 // This method lists the answers for everyone and allows the Tzar to choose one.
 func (bot *CAHBot) ListAnswers(GameID string) {
 	Tzar := bot.CurrentGames[GameID].Players[bot.CurrentGames[GameID].CardTzarOrder[bot.CurrentGames[GameID].CardTzarIndex]]
@@ -561,50 +537,32 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 // This method lists a user's cards using a custom keyboard in the Telegram API.  If we need them to respond to a question, this is handled.
 func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, UserID int, text string) {
 	log.Printf("Showing the user %v their cards.", UserID)
-	message := tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, text)
-	cards := make([][]string, len(bot.CurrentGames[GameID].Players[strconv.Itoa(UserID)].Cards))
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	var response string
+	err = tx.QueryRow("SELECT get_user_cards($1)", UserID).Scan(&response)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	response = response[1 : len(response)-1]
+	message := tgbotapi.NewMessage(UserID, text)
+	cards := make([][]string, len(strings.Split(response, ",")))
 	for i := range cards {
 		cards[i] = make([]string, 1)
 	}
-	for i := 0; i < len(bot.CurrentGames[GameID].Players[strconv.Itoa(UserID)].Cards); i++ {
-		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[bot.CurrentGames[GameID].Players[strconv.Itoa(UserID)].Cards[i]].Text)
+	for i := 0; i < len(strings.Split(response, ",")); i++ {
+		tmp, _ := strconv.Atoi(strings.Split(response, ",")[i])
+		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[tmp].Text)
 	}
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
 	bot.SendMessage(message)
-}
-
-func (bot *CAHBot) MoveCardTzar(GameID string) {
-	log.Printf("Switch the Card Tzar...")
-	Game := bot.CurrentGames[GameID]
-	Game.CardTzarIndex = (Game.CardTzarIndex + 1)
-	if Game.CardTzarIndex >= len(Game.CardTzarOrder) {
-		Game.CardTzarIndex = Game.CardTzarIndex % len(Game.CardTzarOrder)
-		if Game.Settings.TradeInCardsEveryRound {
-			log.Printf("We are about to start a new round.  Letting the players trade in a card.")
-			for _ = range Game.Players {
-				// This just to get it to compile for now.
-				ChatID := 00000
-				bot.ListCardsForUserWithMessage(GameID, ChatID, "Please choose "+strconv.Itoa(Game.Settings.NumCardsToTradeIn)+" card to trade in.")
-			}
-		}
-	}
-	log.Printf("The Card Tzar is now %v.", Game.Players[Game.CardTzarOrder[Game.CardTzarIndex]].Player)
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The Card Tzar is now "+Game.Players[Game.CardTzarOrder[Game.CardTzarIndex]].Player.String()))
-	bot.CurrentGames[GameID] = Game
-}
-
-// This method pauses a started game.
-func (bot *CAHBot) PauseGame(GameID string) {
-	log.Printf("Pausing game for Chat %v...", GameID)
-	// There is a bug in Go that does not allow for things like bot.CurrentGames[ChatID].HasStarted = false.  This is a workaround.
-	tmp := bot.CurrentGames[GameID]
-	tmp.HasBegun = false
-	bot.CurrentGames[GameID] = tmp
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The game has been paused.  Use command '/resume' to resume."))
-}
-
-func (bot *CAHBot) ReceiveFeedback(ChatID int) {
-
 }
 
 // Remove a player from a game if the player is playing.
@@ -665,10 +623,8 @@ func (bot *CAHBot) StartRound(GameID string) {
 				if bot.CurrentGames[GameID].CardTzarIndex == -1 {
 					log.Printf("Start a new game for chat ID %v.", GameID)
 					bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "Get ready.  We are starting the game!"))
-					bot.MoveCardTzar(GameID)
 				}
 				if bot.CurrentGames[GameID].QuestionCard == -1 {
-					bot.GetQuestionCard(GameID)
 					bot.DisplayQuestionCard(GameID)
 				}
 				for _, value := range bot.CurrentGames[GameID].Players {

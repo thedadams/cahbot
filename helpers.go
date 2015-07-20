@@ -52,19 +52,6 @@ func BuildScoreList(rows *sql.Rows) string {
 	return str
 }
 
-// This function will deal a player's hand or add cards to the player's hand
-func DealPlayerHand(Game CAHGame, Hand []int) []int {
-	for len(Hand) < Game.Settings.NumCardsInHand {
-		log.Printf("Dealing card %v to user.", Game.NumACardsLeft)
-		Hand = append(Hand, Game.ShuffledAnswerCards[Game.NumACardsLeft])
-		Game.NumACardsLeft -= 1
-		if Game.NumACardsLeft == -1 {
-			ReshuffleACards(Game)
-		}
-	}
-	return Hand
-}
-
 // This function goes through a game and determines if someone has won.
 func DidSomeoneWin(Game CAHGame) (PlayerGameInfo, bool) {
 	for _, value := range Game.Players {
@@ -113,18 +100,6 @@ func GetRandomID() string {
 	return id
 }
 
-//This function reshuffles the answer cards of a game.
-func ReshuffleACards(Game CAHGame) {
-	shuffle(Game.ShuffledAnswerCards)
-	Game.NumACardsLeft = len(Game.ShuffledAnswerCards) - 1
-}
-
-//This function reshuffles the question cards of a game.
-func ReshuffleQCards(Game CAHGame) {
-	shuffle(Game.ShuffledQuestionCards)
-	Game.NumQCardsLeft = len(Game.ShuffledQuestionCards) - 1
-}
-
 // Get the settings for a game.
 func (gs GameSettings) String() string {
 	var onOff string
@@ -148,16 +123,6 @@ func (gs GameSettings) String() string {
 	tmp += "Pick the worst answer also " + onOff + "\n"
 	tmp += "Each player has " + strconv.Itoa(gs.NumCardsInHand) + " cards in their hand."
 	return tmp + "\n\nUse command '/changesettings' to change these settings."
-}
-
-// Shuffle an array of strings.
-func shuffle(arr []int) {
-	rand.Seed(time.Now().UnixNano())
-
-	for i := len(arr) - 1; i > 0; i-- {
-		j := rand.Intn(i)
-		arr[i], arr[j] = arr[j], arr[i]
-	}
 }
 
 // This function shuffles the answers so they don't come out in the same order every time.

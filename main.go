@@ -18,7 +18,7 @@ func main() {
 	defer bot.db_conn.Close()
 
 	// Remove when deployed
-	bot.Debug = true
+	// bot.Debug = true
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
