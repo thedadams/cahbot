@@ -41,7 +41,6 @@ func BuildScoreList(rows *sql.Rows) string {
 	for rows.Next() {
 		var response string
 		if err := rows.Scan(&response); err == nil {
-			log.Print(response)
 			arrResponse := strings.Split(response[1:len(response)-1], ",")
 			str += arrResponse[0] + " - " + arrResponse[1] + "\n"
 		} else {
