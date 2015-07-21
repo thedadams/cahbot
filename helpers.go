@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"html"
 	"log"
 	"math/rand"
 	"strconv"
@@ -18,21 +17,6 @@ func ArrayTransforForPostgres(theArray []int) string {
 	}
 	value = value[0:len(value)-1] + "}"
 	return value
-}
-
-// This function builds the list of submitted answers to be available for the players.
-func BuildAnswerList(Game CAHGame) [][]string {
-	answers := make([][]string, len(Game.Players))
-	for i := range answers {
-		answers[i] = make([]string, 1)
-	}
-	i := 0
-	for _, value := range Game.Players {
-		answers[i][0] = html.UnescapeString(value.AnswerBeingPlayed)
-		i++
-	}
-	ShuffleAnswers(answers)
-	return answers
 }
 
 // This builds the score list from a return sql.Rows.

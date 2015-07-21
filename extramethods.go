@@ -515,22 +515,37 @@ func (bot *CAHBot) EndGame(GameID string, User tgbotapi.User) {
 
 // This method lists the answers for everyone and allows the Tzar to choose one.
 func (bot *CAHBot) ListAnswers(GameID string) {
-	Tzar := bot.CurrentGames[GameID].Players[bot.CurrentGames[GameID].CardTzarOrder[bot.CurrentGames[GameID].CardTzarIndex]]
-	cards := BuildAnswerList(bot.CurrentGames[GameID])
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
+	var cards string
+	err = tx.QueryRow("SELECT get_answers($1)", GameID).Scan(&cards)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
 	text := "Here are the submitted answers:\n\n"
-	for i := range cards {
-		text += cards[i][0] + "\n"
+	cardsKeyboard := make([][]string, 1)
+	// THERE IS A PROBLEM HERE WITH COMMAS POSSIBLY BEING IN THE ANSWERS.
+	for i, val := range strings.Split(cards[1:len(cards)-1], ",") {
+		text += html.UnescapeString(val[1:len(val)-1]) + "\n"
+		cardsKeyboard[i] = make([]string, 1)
+		cardsKeyboard[i][0] = html.UnescapeString(val[1 : len(val)-1])
 	}
 	log.Printf("Showing everyone the answers submitted for game %v.", GameID)
-	message := tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, text)
-	bot.SendMessage(message)
-	if Tzar.Player.UserName != "" {
-		message.Text += "@" + Tzar.Player.UserName
-	} else {
-		message.ReplyToMessageID = Tzar.ReplyID
+	bot.SendMessageToGame(GameID, text)
+	var TzarID int
+	err = tx.QueryRow("SELECT tzar_id($1)", GameID).Scan(&TzarID)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
 	}
-	message.Text = "Tzar " + Tzar.Player.String() + ", please choose the best answer."
-	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
+	log.Printf("Asking the tzar, %v, to pick an answer for game with id %v.", TzarID, GameID)
+	message := tgbotapi.NewMessage(TzarID, "Tzar, please choose the best answer.")
+	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cardsKeyboard, true, true, false}
 	bot.SendMessage(message)
 }
 
@@ -561,7 +576,7 @@ func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, UserID int, text s
 		tmp, _ := strconv.Atoi(strings.Split(response, ",")[i])
 		cards[i][0] = html.UnescapeString(bot.AllAnswerCards[tmp].Text)
 	}
-	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, true}
+	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, false}
 	bot.SendMessage(message)
 }
 
@@ -601,8 +616,29 @@ func (bot *CAHBot) RemovePlayerFromGame(GameID string, User tgbotapi.User) {
 }
 
 func (bot *CAHBot) SendGameSettings(GameID string, ChatID int) {
-	log.Printf("Sending game settings for %v.", ChatID)
-	bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "Game settings: \n"+bot.CurrentGames[GameID].Settings.String()))
+	tx, err := bot.db_conn.Begin()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(ChatID)
+		tx.Rollback()
+		return
+	}
+	// This is really bad, but I want to see if it works.
+	var settings string
+	err = tx.QueryRow("SELECT game_settings($1)", GameID).Scan(&settings)
+	tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return
+	}
+	var text string = "Game settings:\n"
+	settings = strings.Replace(settings, "false", "No", -1)
+	settings = strings.Replace(settings, "true", "Yes", -1)
+	for _, val := range strings.Split(settings[1:len(settings)-1], ",") {
+		text += val[1:len(val)-1] + "\n"
+	}
+	log.Printf("Sending game settings for %v.", GameID)
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, text))
 }
 
 // This method handles the starting/resuming of a round.
@@ -642,9 +678,5 @@ func (bot *CAHBot) StartRound(GameID string) {
 
 // This method handles the Tzar choosing an answer.
 func (bot *CAHBot) TzarChooseAnswer(GameID string) {
-	game := bot.CurrentGames[GameID]
-
-	game.CardTzarIndex = -1
-	bot.CurrentGames[GameID] = game
 
 }
