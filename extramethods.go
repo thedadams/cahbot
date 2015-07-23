@@ -15,11 +15,24 @@ import (
 // This is the starting point for handling an update from chat.
 func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	bot.AddUserToDatabase(update.Message.From, update.Message.Chat.ID)
-	GameID, err := GetGameID(update.Message.From.ID, bot.db_conn)
+	GameID, Response, err := GetGameID(update.Message.From.ID, bot.db_conn)
 	messageType := bot.DetectKindMessageRecieved(&update.Message)
 	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
 		bot.ProccessCommand(&update.Message, GameID)
+	} else if messageType == "message" && Response != "" {
+		switch Response {
+		case "settings":
+			// Handle the change of a setting here.
+		case "answer":
+			// Handle the receipt of an answer here.
+		case "tradeincard":
+			// Handle the trading in of a card here.
+		case "czarbest":
+			// Handle the receipt of a czar picking best answer here.
+		case "czarworst":
+			// Handle the receipt of a czar picking the worst answer here.
+		}
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
 		if err != nil {
 			bot.SendMessage(tgbotapi.NewMessage(update.Message.Chat.ID, "It seems that you are not involved in any game so your message fell on deaf ears."))
@@ -278,9 +291,9 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
-	case "whoistzar":
+	case "whoisczar":
 		if GameID != "" {
-			var Tzar string
+			var czar string
 			tx, err := bot.db_conn.Begin()
 			defer tx.Rollback()
 			if err != nil {
@@ -288,13 +301,13 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				bot.SendActionFailedMessage(m.Chat.ID)
 				return
 			}
-			err = tx.QueryRow("SELECT whoistzar($1)", GameID).Scan(&Tzar)
+			err = tx.QueryRow("SELECT whoisczar($1)", GameID).Scan(&czar)
 			if err != nil {
 				log.Printf("ERROR: %v", err)
 				bot.SendActionFailedMessage(m.Chat.ID)
 				return
 			}
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card Tzar is "+Tzar+"."))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The current Card czar is "+czar+"."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -410,7 +423,7 @@ func (bot *CAHBot) BeginGame(GameID string) {
 	// At this point we commit the starting of the game.
 	tx.Commit()
 	if tmp == 1 {
-		log.Printf("Asking the Card Tzar to pick the best and/or worse answer.")
+		log.Printf("Asking the Card czar to pick the best and/or worse answer.")
 		bot.ListAnswers(GameID)
 	} else {
 		bot.SendMessageToGame(GameID, "Get ready, we are starting the game!")
@@ -514,7 +527,7 @@ func (bot *CAHBot) EndGame(GameID string, User tgbotapi.User) {
 	tx.Commit()
 }
 
-// This method lists the answers for everyone and allows the Tzar to choose one.
+// This method lists the answers for everyone and allows the czar to choose one.
 func (bot *CAHBot) ListAnswers(GameID string) {
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
@@ -537,14 +550,14 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 	}
 	log.Printf("Showing everyone the answers submitted for game %v.", GameID)
 	bot.SendMessageToGame(GameID, text)
-	var TzarID int
-	err = tx.QueryRow("SELECT tzar_id($1)", GameID).Scan(&TzarID)
+	var czarID int
+	err = tx.QueryRow("SELECT czar_id($1)", GameID).Scan(&czarID)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return
 	}
-	log.Printf("Asking the tzar, %v, to pick an answer for game with id %v.", TzarID, GameID)
-	message := tgbotapi.NewMessage(TzarID, "Tzar, please choose the best answer.")
+	log.Printf("Asking the czar, %v, to pick an answer for game with id %v.", czarID, GameID)
+	message := tgbotapi.NewMessage(czarID, "czar, please choose the best answer.")
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cardsKeyboard, true, true, false}
 	bot.SendMessage(message)
 }
@@ -597,7 +610,7 @@ func (bot *CAHBot) RemovePlayerFromGame(GameID string, User tgbotapi.User) {
 		bot.SendActionFailedMessage(User.ID)
 		return
 	}
-	bot.SendMessage(tgbotapi.NewMessage(User.ID, "Thanks for playing, "+User.String()+"!  You collected "+strings.Split(str[1:len(str)-1], ",")[1]+" cards."))
+	bot.SendMessage(tgbotapi.NewMessage(User.ID, "Thanks for playing, "+User.String()+"!  You collected "+strings.Split(str[1:len(str)-1], ",")[1]+" Awesome Points."))
 	// Now check to see if there is anyone still in the game.
 	var numPlayersInGame int
 	err = tx.QueryRow("SELECT num_players_in_game($1)", GameID).Scan(&numPlayersInGame)
@@ -683,7 +696,7 @@ func (bot *CAHBot) StartRound(GameID string) {
 	}
 }
 
-// This method handles the Tzar choosing an answer.
-func (bot *CAHBot) TzarChoseAnswer(GameID string) {
+// This method handles the czar choosing an answer.
+func (bot *CAHBot) czarChoseAnswer(GameID string) {
 
 }

@@ -26,7 +26,7 @@ func BuildScoreList(rows *sql.Rows) string {
 		var response string
 		if err := rows.Scan(&response); err == nil {
 			arrResponse := strings.Split(response[1:len(response)-1], ",")
-			str += arrResponse[0] + " - " + arrResponse[1] + "\n"
+			str += arrResponse[0] + " hand " + arrResponse[1] + " Awesome Points\n"
 		} else {
 			log.Printf("ERROR: %v", err)
 			return "ERROR"
@@ -47,16 +47,17 @@ func GameScores(GameID string, db *sql.DB) string {
 }
 
 // This function gets the GameID for a player.
-func GetGameID(UserID int, db *sql.DB) (string, error) {
+func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 	var GameID string
 	tx, err := db.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		return "", err
+		return "", "", err
 	}
 	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
-	return GameID, err
+	GameID = GameID[1 : len(GameID)-1]
+	return strings.Split(GameID, ",")[0], strings.Split(GameID, ",")[1], err
 
 }
 
@@ -73,11 +74,12 @@ func GetRandomID() string {
 }
 
 // This function shuffles the answers so they don't come out in the same order every time.
-func ShuffleAnswers(arr []string) {
+func ShuffleAnswers(arr []string) []string {
 	rand.Seed(time.Now().UnixNano())
 
 	for i := len(arr) - 1; i > 0; i-- {
 		j := rand.Intn(i)
 		arr[i], arr[j] = arr[j], arr[i]
 	}
+	return arr
 }
