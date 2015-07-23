@@ -35,19 +35,8 @@ func BuildScoreList(rows *sql.Rows) string {
 	return str
 }
 
-// This function goes through a game and determines if someone has won.
-func DidSomeoneWin(Game CAHGame) (PlayerGameInfo, bool) {
-	for _, value := range Game.Players {
-		if value.Points == Game.Settings.NumPointsToWin {
-			return value, true
-		}
-	}
-	return PlayerGameInfo{}, false
-}
-
 // Get the scores for a game.
 func GameScores(GameID string, db *sql.DB) string {
-	// Write a stored procedure for this query
 	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
 	defer rows.Close()
 	if err != nil {
@@ -83,33 +72,8 @@ func GetRandomID() string {
 	return id
 }
 
-// Get the settings for a game.
-func (gs GameSettings) String() string {
-	var onOff string
-	if gs.MysteryPlayer {
-		onOff = "On"
-	} else {
-		onOff = "Off"
-	}
-	tmp := "Mystery Player - " + onOff + "\n"
-	if gs.TradeInCardsEveryRound {
-		onOff = "On"
-	} else {
-		onOff = "Off"
-	}
-	tmp += "Trade in 2 cards every round - " + onOff + "\n"
-	if gs.PickWorstToo {
-		onOff = "On"
-	} else {
-		onOff = "Off"
-	}
-	tmp += "Pick the worst answer also " + onOff + "\n"
-	tmp += "Each player has " + strconv.Itoa(gs.NumCardsInHand) + " cards in their hand."
-	return tmp + "\n\nUse command '/changesettings' to change these settings."
-}
-
 // This function shuffles the answers so they don't come out in the same order every time.
-func ShuffleAnswers(arr [][]string) {
+func ShuffleAnswers(arr []string) {
 	rand.Seed(time.Now().UnixNano())
 
 	for i := len(arr) - 1; i > 0; i-- {

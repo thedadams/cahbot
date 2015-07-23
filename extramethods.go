@@ -411,8 +411,9 @@ func (bot *CAHBot) BeginGame(GameID string) {
 	tx.Commit()
 	if tmp == 1 {
 		log.Printf("Asking the Card Tzar to pick the best and/or worse answer.")
-		bot.TzarChooseAnswer(GameID)
+		bot.ListAnswers(GameID)
 	} else {
+		bot.SendMessageToGame(GameID, "Get ready, we are starting the game!")
 		bot.StartRound(GameID)
 	}
 }
@@ -529,9 +530,8 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 	}
 	text := "Here are the submitted answers:\n\n"
 	cardsKeyboard := make([][]string, 1)
-	// THERE IS A PROBLEM HERE WITH COMMAS POSSIBLY BEING IN THE ANSWERS.
-	for i, val := range strings.Split(cards[1:len(cards)-1], ",") {
-		text += html.UnescapeString(val[1:len(val)-1]) + "\n"
+	for i, val := range ShuffleAnswers(strings.Split(cards[1:len(cards)-1], "+=+\",")) {
+		text += html.UnescapeString(val[1:]) + "\n"
 		cardsKeyboard[i] = make([]string, 1)
 		cardsKeyboard[i][0] = html.UnescapeString(val[1 : len(val)-1])
 	}
@@ -643,40 +643,47 @@ func (bot *CAHBot) SendGameSettings(GameID string, ChatID int) {
 
 // This method handles the starting/resuming of a round.
 func (bot *CAHBot) StartRound(GameID string) {
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "We ran into an error and cannot start the next round.  You can report the error to my developer, @thedadams, or try again later.")
+		return
+	}
 	// Check to see if the game is running and if we are waiting for answers.
-	if bot.CurrentGames[GameID].HasBegun {
-		if bot.CurrentGames[GameID].WaitingForAnswers {
-			bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "We are waiting for other players to answer the question."))
-		} else {
-			// Once we get here, we are either starting a game, resuming a game, or going onto another round.
-			// Check to see if someone won.
-			if winner, ans := DidSomeoneWin(bot.CurrentGames[GameID]); ans {
-				// Someone won, so we end the game.
-				log.Printf("%v won the game with ID %v.", winner, GameID)
-				bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "We have a winner!  Congratulations to "+winner.Player.String()+" on the victory.  We are now ending the game."))
-				bot.EndGame(GameID, tgbotapi.User{ID: -1})
+	var waiting bool
+	err = tx.QueryRow("SELECT waiting_for_answers($1)", GameID).Scan(&waiting)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendMessageToGame(GameID, "We ran into an error and cannot start the next round.  You can report the error to my developer, @thedadams, or try again later.")
+		return
+	}
+	if waiting {
+		bot.SendMessageToGame(GameID, "We are waiting for players to give answers.")
+	} else {
+		bot.DisplayQuestionCard(GameID)
+		rows, err := tx.Query("SELECT get_userids_we_need_answer($1)", GameID)
+		defer rows.Close()
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendMessageToGame(GameID, "We ran into an error and cannot start the next round.  You can report the error to my developer, @thedadams, or try again later.")
+			return
+		}
+		tx.Rollback()
+		for rows.Next() {
+			var id int
+			err = rows.Scan(&id)
+			if err != nil {
+				log.Printf("ERROR: %v", err)
 			} else {
-				if bot.CurrentGames[GameID].CardTzarIndex == -1 {
-					log.Printf("Start a new game for chat ID %v.", GameID)
-					bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "Get ready.  We are starting the game!"))
-				}
-				if bot.CurrentGames[GameID].QuestionCard == -1 {
-					bot.DisplayQuestionCard(GameID)
-				}
-				for _, value := range bot.CurrentGames[GameID].Players {
-					if !value.IsCardTzar && value.AnswerBeingPlayed == "" {
-						log.Printf("Asking %v for an answer card.", value)
-						bot.ListCardsForUserWithMessage(GameID, value.Player.ID, "Please pick an answer for the question.")
-					}
-				}
+				log.Printf("Asking %v for an answer card.", id)
+				bot.ListCardsForUserWithMessage(GameID, id, "Please pick an answer for the question.")
 			}
 		}
-	} else {
-		bot.SendMessage(tgbotapi.NewMessage(bot.CurrentGames[GameID].ChatID, "The game is not currently running.  Use command '/resume' to start it up."))
 	}
 }
 
 // This method handles the Tzar choosing an answer.
-func (bot *CAHBot) TzarChooseAnswer(GameID string) {
+func (bot *CAHBot) TzarChoseAnswer(GameID string) {
 
 }
