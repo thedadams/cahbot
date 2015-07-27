@@ -13,9 +13,8 @@ import (
 type CAHBot struct {
 	*tgbotapi.BotAPI
 	db_conn          *sql.DB
-	CurrentGames     map[string]CAHGame `json:"current_games"`
-	AllQuestionCards []QuestionCard     `json:"all_question_cards"`
-	AllAnswerCards   []AnswerCard       `json:"all_answer_cards"`
+	AllQuestionCards []QuestionCard `json:"all_question_cards"`
+	AllAnswerCards   []AnswerCard   `json:"all_answer_cards"`
 }
 
 // This creates a new CAHBot, which is basically a wrapper for tgbotapi.BotAPI.
@@ -37,44 +36,7 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return &CAHBot{GenericBot, db, make(map[string]CAHGame), AllQuestionCards, AllAnswerCards}, err
-}
-
-// Struct that represents an instance of a game.
-type CAHGame struct {
-	ChatID                int                       `json:"chat_id"`
-	ShuffledQuestionCards []int                     `json:"shuffled_q_cards"`
-	ShuffledAnswerCards   []int                     `json:"shuffled_a_cards"`
-	NumQCardsLeft         int                       `json:"q_cards_left"`
-	NumACardsLeft         int                       `json:"a_cards_left"`
-	Players               map[string]PlayerGameInfo `json:"players"`
-	CardTzarOrder         []string                  `json:"tzar_order"`
-	CardTzarIndex         int                       `json:"tzar_index"`
-	QuestionCard          int                       `json:"current_q_card"`
-	Settings              GameSettings              `json:"settings"`
-	HasBegun              bool                      `json:"has_begun"`
-	WaitingForAnswers     bool                      `json:"waiting_for_answers"`
-}
-
-// Struct that represents a player in a game.
-// The ReplyID is to the join message the user sends so we can reply to it if they don't have a username.
-type PlayerGameInfo struct {
-	Player            tgbotapi.User `json:"user"`
-	ReplyID           int           `json:"reply_id"`
-	Points            int           `json:"points"`
-	Cards             []int         `json:"cards"`
-	IsCardTzar        bool          `json:"is_tzar"`
-	AnswerBeingPlayed string        `json:"answer_played"`
-}
-
-// Settings for game.
-type GameSettings struct {
-	MysteryPlayer          bool `json:"mystery_player"`
-	TradeInCardsEveryRound bool `json:"trade_in_cards_every_round"`
-	NumCardsToTradeIn      int  `json:"num_cards_to_trade_in"`
-	PickWorstToo           bool `json:"pick_worst"`
-	NumCardsInHand         int  `json:"num_cards_in_hand"`
-	NumPointsToWin         int  `json:"points_to_win"`
+	return &CAHBot{GenericBot, db, AllQuestionCards, AllAnswerCards}, err
 }
 
 // Question card

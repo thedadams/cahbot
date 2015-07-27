@@ -26,7 +26,13 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 			// Handle the change of a setting here.
 		case "answer":
 			// Handle the receipt of an answer here.
-			bot.RecievedAnswerFromPlayer(update.Message.From.ID, GameID, &update.Message)
+			answer := AnswerIsValid(bot, update.Message.From.ID, update.Message.Text)
+			if answer == -1 {
+				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+				bot.ForwardMessageToGame(&update.Message, GameID)
+			} else {
+				bot.RecievedAnswerFromPlayer(update.Message.From.ID, GameID, answer)
+			}
 		case "tradeincard":
 			// Handle the trading in of a card here.
 		case "czarbest":
@@ -552,13 +558,13 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 	log.Printf("Showing everyone the answers submitted for game %v.", GameID)
 	bot.SendMessageToGame(GameID, text)
 	var czarID int
-	err = tx.QueryRow("SELECT czar_id($1)", GameID).Scan(&czarID)
+	err = tx.QueryRow("SELECT czar_id($1, $2)", GameID, "czarbest").Scan(&czarID)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return
 	}
 	log.Printf("Asking the czar, %v, to pick an answer for game with id %v.", czarID, GameID)
-	message := tgbotapi.NewMessage(czarID, "czar, please choose the best answer.")
+	message := tgbotapi.NewMessage(czarID, "Czar, please choose the best answer.")
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cardsKeyboard, true, true, false}
 	bot.SendMessage(message)
 }
@@ -595,7 +601,7 @@ func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, UserID int, text s
 }
 
 // Handle the receipt of an answer from a player.
-func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, Message *tgbotapi.Message) {
+func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerIndex int) {
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
@@ -603,9 +609,17 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, Message *
 		bot.SendActionFailedMessage(UserID)
 		return
 	}
-	var NeedAnoterAnswer int
+	var QuestionIndex int
 	var DisplayName string
-	err = tx.QueryRow("SELECT received_asnwer_from_user($1, $2)", UserID, Message.Text).Scan(&NeedAnoterAnswer)
+	var CurrentAnswer string
+	err = tx.QueryRow("SELECT get_question_card($1)", GameID).Scan(&QuestionIndex)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	CurrentAnswer = strings.Replace(bot.AllQuestionCards[QuestionIndex].Text, "_", bot.AllAnswerCards[AnswerIndex].Text, 1)
+	_, err = tx.Exec("SELECT received_asnwer_from_user($1, $2, $3)", UserID, AnswerIndex, CurrentAnswer)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)
@@ -617,18 +631,23 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, Message *
 		bot.SendActionFailedMessage(UserID)
 		return
 	}
-	tx.Commit()
-	switch NeedAnoterAnswer {
-	case -1:
-		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
-		bot.ForwardMessageToGame(Message, GameID)
-	case 1:
+	if strings.Contains(CurrentAnswer, "_") {
 		log.Printf("We received a valid answer from user with id %v, but we need another answer.", UserID)
 		bot.ListCardsForUserWithMessage(GameID, UserID, "We received your answer, but this is a multi-answer questions.  Please choose another answer.")
-	case 0:
+	} else {
 		log.Printf("We received a valid, complete answer from user with id %v.", UserID)
 		bot.SendMessageToGame(GameID, "We received "+DisplayName+"'s answer.")
+		err = tx.QueryRow("SELECT do_we_have_all_answers($1)", GameID).Scan(&QuestionIndex)
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendActionFailedMessage(UserID)
+			return
+		}
+		if QuestionIndex == 1 {
+			go bot.ListAnswers(GameID)
+		}
 	}
+	tx.Commit()
 }
 
 // Remove a player from a game if the player is playing.
@@ -735,6 +754,6 @@ func (bot *CAHBot) StartRound(GameID string) {
 }
 
 // This method handles the czar choosing an answer.
-func (bot *CAHBot) czarChoseAnswer(GameID string) {
+func (bot *CAHBot) CzarChoseAnswer(GameID string) {
 
 }

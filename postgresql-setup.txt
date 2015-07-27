@@ -112,6 +112,16 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION czar_id(gameid char(5), status varchar(8)) RETURNS integer AS $$
+DECLARE czarid integer;
+BEGIN
+SELECT current_czar INTO czarid FROM games WHERE id = gameid;
+UPDATE users SET waiting_for_response = status WHERE id = czarid;
+RETURN czarid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION do_we_have_all_answers(gameid char(5)) RETURNS integer AS $$
 DECLARE ans users%rowtype;
 BEGIN
@@ -201,7 +211,8 @@ $$ LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION get_userids_for_game(gameid char(5)) RETURNS SETOF integer
 AS $$
-SELECT players.user_id FROM players WHERE players.game_id = gameid;
+UPDATE users SET waiting_for_response = 'answer' FROM players WHERE players.game_id = gameid AND players.user_id = users.id AND users.current_answer != '';
+SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.waiting_for_response = 'answer' AND users.id = players.user_id;
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -223,6 +234,15 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION num_players_in_game(gameid char(5)) RETURNS bigint AS $$
 SELECT COUNT(*) FROM players WHERE players.game_id = gameid;
 $$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION received_asnwer_from_user(userid integer, answer_index integer, answer text) RETURNS void AS $$
+DECLARE user_cards integer[];
+BEGIN
+SELECT cards_in_hand INTO user_cards FROM users WHERE users.id = userid;
+UPDATE users SET (cards_in_hand, current_answer) = (user_cards - answer_index, answer) WHERE users.id = userid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION remove_player_from_game(userid integer) RETURNS TABLE(name varchar(64), points text) AS $$
@@ -256,11 +276,6 @@ SELECT "do_we_have_all_answers"(gameid) INTO res;
 RETURN res;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
-
-
-CREATE OR REPLACE FUNCTION czar_id(gameid char(5)) RETURNS integer AS $$
-SELECT current_czar FROM games WHERE id = gameid;
-$$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION update_timestamp() RETURNS trigger AS $$

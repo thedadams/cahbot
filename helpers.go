@@ -2,12 +2,40 @@ package main
 
 import (
 	"database/sql"
+	"html"
 	"log"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// This check that the answer we received from the user is a valid answer.
+func AnswerIsValid(bot *CAHBot, UserID int, Answer string) int {
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return -1
+	}
+	var response string
+	err = tx.QueryRow("SELECT get_user_cards($1)", UserID).Scan(&response)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return -1
+	}
+	response = response[1 : len(response)-1]
+	for i, val := range strings.Split(response, ",") {
+		var tmp int
+		tmp, _ = strconv.Atoi(val)
+		if html.UnescapeString(bot.AllAnswerCards[tmp].Text) == Answer {
+			return i
+		}
+	}
+	return -1
+}
 
 // Transforms an array for input into postges database.
 func ArrayTransforForPostgres(theArray []int) string {
