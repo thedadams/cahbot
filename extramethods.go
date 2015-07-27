@@ -26,6 +26,7 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 			// Handle the change of a setting here.
 		case "answer":
 			// Handle the receipt of an answer here.
+			bot.RecievedAnswerFromPlayer(update.Message.From.ID, GameID, &update.Message)
 		case "tradeincard":
 			// Handle the trading in of a card here.
 		case "czarbest":
@@ -591,6 +592,43 @@ func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, UserID int, text s
 	}
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cards, true, true, false}
 	bot.SendMessage(message)
+}
+
+// Handle the receipt of an answer from a player.
+func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, Message *tgbotapi.Message) {
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	var NeedAnoterAnswer int
+	var DisplayName string
+	err = tx.QueryRow("SELECT received_asnwer_from_user($1, $2)", UserID, Message.Text).Scan(&NeedAnoterAnswer)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	err = tx.QueryRow("SELECT get_display_name($1)", UserID).Scan(&DisplayName)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	tx.Commit()
+	switch NeedAnoterAnswer {
+	case -1:
+		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+		bot.ForwardMessageToGame(Message, GameID)
+	case 1:
+		log.Printf("We received a valid answer from user with id %v, but we need another answer.", UserID)
+		bot.ListCardsForUserWithMessage(GameID, UserID, "We received your answer, but this is a multi-answer questions.  Please choose another answer.")
+	case 0:
+		log.Printf("We received a valid, complete answer from user with id %v.", UserID)
+		bot.SendMessageToGame(GameID, "We received "+DisplayName+"'s answer.")
+	}
 }
 
 // Remove a player from a game if the player is playing.

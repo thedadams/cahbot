@@ -176,6 +176,11 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION get_display_name(userid integer) RETURNS text AS $$
+SELECT display_name FROM users WHERE id = userid;
+$$ LANGUAGE SQL VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION get_gameid(userid integer) RETURNS record AS $$
 SELECT players.game_id, users.waiting_for_response FROM players, users WHERE players.user_id = userid AND players.user_id = users.id;
 $$ LANGUAGE SQL VOLATILE;
@@ -201,6 +206,7 @@ $$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION get_userids_we_need_answer(gameid char(5)) RETURNS SETOF integer AS $$
+UPDATE users SET waiting_for_response = 'answer' FROM players WHERE users.id = players.user_id AND players.game_id = gameid;
 SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.id = players.user_id AND users.current_answer != '' AND users.current_czar = false;
 $$ LANGUAGE SQL VOLATILE;
 
