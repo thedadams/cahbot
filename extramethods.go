@@ -619,7 +619,7 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 		return
 	}
 	CurrentAnswer = strings.Replace(bot.AllQuestionCards[QuestionIndex].Text, "_", bot.AllAnswerCards[AnswerIndex].Text, 1)
-	_, err = tx.Exec("SELECT received_asnwer_from_user($1, $2, $3)", UserID, AnswerIndex, CurrentAnswer)
+	_, err = tx.Exec("SELECT received_answer_from_user($1, $2, $3, $4)", UserID, AnswerIndex, CurrentAnswer, strings.Contains(CurrentAnswer, "_"))
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)

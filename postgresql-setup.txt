@@ -62,6 +62,12 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION add_cards_to_user_hand(userid integer, num_cards integer, gameid char(5)) RETURNS void AS $$
+UPDATE users SET cards_in_hand = cards_in_hand + games.answer_cards[games.acards_left] FROM games, players WHERE games.id = gameid AND users.id = userid AND players.game_id = gameid AND players.user_id = user_id;
+UPDATE games SET acards_left = acards_left - 1 WHERE games.id = gameid;
+$$ LANGUAGE SQL VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION add_game(gameid char(5), qcards integer[], acards integer[], user_create_id integer) RETURNS void AS $$
 BEGIN
 INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, czar_order, current_czar, current_qcard, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win, last_modified) VALUES(gameid, qcards, acards, array_length(qcards, 1), array_length(acards, 1), '{}', user_create_id, -1, false, false, false, 0, false, 7, 7, transaction_timestamp());
@@ -236,11 +242,14 @@ SELECT COUNT(*) FROM players WHERE players.game_id = gameid;
 $$ LANGUAGE SQL VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION received_asnwer_from_user(userid integer, answer_index integer, answer text) RETURNS void AS $$
+CREATE OR REPLACE FUNCTION received_answer_from_user(userid integer, answer_index integer, answer text, finished boolean) RETURNS void AS $$
 DECLARE user_cards integer[];
 BEGIN
 SELECT cards_in_hand INTO user_cards FROM users WHERE users.id = userid;
 UPDATE users SET (cards_in_hand, current_answer) = (user_cards - answer_index, answer) WHERE users.id = userid;
+IF finished THEN
+SELECT "add_cards_to_user_hand"(userid, 1, games.id) FROM games, players WHERE games.id = players.game_id AND players.user_id = userid;
+END IF;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
