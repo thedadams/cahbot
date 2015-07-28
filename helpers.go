@@ -54,7 +54,7 @@ func BuildScoreList(rows *sql.Rows) string {
 		var response string
 		if err := rows.Scan(&response); err == nil {
 			arrResponse := strings.Split(response[1:len(response)-1], ",")
-			str += arrResponse[0] + " hand " + arrResponse[1] + " Awesome Points\n"
+			str += arrResponse[0] + " had " + arrResponse[1] + " Awesome Points\n"
 		} else {
 			log.Printf("ERROR: %v", err)
 			return "ERROR"
@@ -84,6 +84,10 @@ func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 		return "", "", err
 	}
 	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return "", "", err
+	}
 	GameID = GameID[1 : len(GameID)-1]
 	return strings.Split(GameID, ",")[0], strings.Split(GameID, ",")[1], err
 

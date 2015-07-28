@@ -4,7 +4,7 @@ CREATE TABLE games (id character(5) NOT NULL, answer_cards integer[], question_c
 ALTER TABLE ONLY games ADD CONSTRAINT games_pkey PRIMARY KEY (id);
 
 
-CREATE TABLE users (id integer NOT NULL, first_name character varying(32), last_name character varying(32), username character varying(32), points integer, cards_in_hand integer[], current_czar boolean, current_answer text, display_name character varying(64), waiting_for_response character varying(8));
+CREATE TABLE users (id integer NOT NULL, first_name character varying(32), last_name character varying(32), username character varying(32), points integer, cards_in_hand integer[], current_answer text, display_name character varying(64), waiting_for_response character varying(8));
 
 
 ALTER TABLE ONLY users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
@@ -62,9 +62,19 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION add_cards_to_user_hand(userid integer, num_cards integer, gameid char(5)) RETURNS void AS $$
-UPDATE users SET cards_in_hand = cards_in_hand + games.answer_cards[games.acards_left] FROM games, players WHERE games.id = gameid AND users.id = userid AND players.game_id = gameid AND players.user_id = user_id;
-UPDATE games SET acards_left = acards_left - 1 WHERE games.id = gameid;
+CREATE OR REPLACE FUNCTION add_cards_to_all_in_game(gameid char(5), num_cards integer) RETURNS void AS $$
+DECLARE id users.id%TYPE;
+BEGIN
+FOR id IN SELECT user_id FROM players WHERE players.game_id = gameid LOOP
+PERFORM "add_cards_to_user_hand"(id, num_cards);
+END LOOP;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION add_cards_to_user_hand(userid integer, num_cards integer) RETURNS void AS $$
+UPDATE users SET cards_in_hand = cards_in_hand + subarray(games.answer_cards, games.acards_left - num_cards, num_cards) FROM games, players WHERE games.id = players.game_id AND players.user_id = userid;
+UPDATE games SET acards_left = acards_left - num_cards FROM players WHERE games.id = players.game_id AND players.user_id = userid;
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -93,7 +103,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION add_user(userid integer, first_name varchar(32), last_name varchar(32), username varchar(32), display_name varchar(64)) RETURNS integer AS $$
-INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_czar, current_answer, waiting_for_response) VALUES(add_user.userid, add_user.first_name, add_user.last_name,add_user. username, add_user.display_name, 0, NULL, false, '', '');
+INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_answer, waiting_for_response) VALUES(add_user.userid, add_user.first_name, add_user.last_name,add_user. username, add_user.display_name, 0, NULL, '', '');
 SELECT users.id FROM users WHERE users.id = add_user.userid;
 $$ LANGUAGE SQL VOLATILE;
 
@@ -107,10 +117,14 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION clean_up_old_games() RETURNS TABLE(gameid char(5), userid integer) AS $$
+CREATE OR REPLACE FUNCTION clean_up_old_games() RETURNS SETOF players AS $$
+DECLARE res players%rowtype;
+DECLARE gameid games.id%TYPE;
 BEGIN
-RETURN QUERY
-SELECT players.game_id, players.user_id FROM players, games WHERE games.last_modified < NOW() - INTERVAL '1 MINUTE' AND games.id = players.game_id;
+FOR res IN SELECT * FROM players, games WHERE games.last_modified < NOW() - INTERVAL '1 MINUTE' AND games.id = players.game_id LOOP
+PERFORM remove_player_from_game(res.user_id);
+RETURN NEXT res;
+END LOOP;
 FOR gameid IN SELECT games.id FROM games WHERE games.last_modified < NOW() - INTERVAL '1 MINUTE' LOOP
 PERFORM end_game(gameid);
 END LOOP;
@@ -217,14 +231,13 @@ $$ LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION get_userids_for_game(gameid char(5)) RETURNS SETOF integer
 AS $$
-UPDATE users SET waiting_for_response = 'answer' FROM players WHERE players.game_id = gameid AND players.user_id = users.id AND users.current_answer != '';
-SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.waiting_for_response = 'answer' AND users.id = players.user_id;
+SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.id = players.user_id;
 $$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION get_userids_we_need_answer(gameid char(5)) RETURNS SETOF integer AS $$
-UPDATE users SET waiting_for_response = 'answer' FROM players WHERE users.id = players.user_id AND players.game_id = gameid;
-SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.id = players.user_id AND users.current_answer != '' AND users.current_czar = false;
+UPDATE users SET waiting_for_response = 'answer' FROM players, games WHERE users.id = players.user_id AND players.game_id = gameid AND users.current_answer = '' AND users.id != games.current_czar AND games.id = gameid;
+SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.id = players.user_id AND users.waiting_for_response = 'answer';
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -248,7 +261,7 @@ BEGIN
 SELECT cards_in_hand INTO user_cards FROM users WHERE users.id = userid;
 UPDATE users SET (cards_in_hand, current_answer) = (user_cards - answer_index, answer) WHERE users.id = userid;
 IF finished THEN
-SELECT "add_cards_to_user_hand"(userid, 1, games.id) FROM games, players WHERE games.id = players.game_id AND players.user_id = userid;
+SELECT "add_cards_to_user_hand"(userid, 1) FROM games, players WHERE games.id = players.game_id AND players.user_id = userid;
 END IF;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -266,7 +279,7 @@ IF czar = userid THEN
 END IF;
 czar_array := czar_array - userid;
 UPDATE games SET (current_czar, czar_order) = (czar, czar_array) FROM players WHERE games.id = players.game_id AND players.user_id = userid;
-UPDATE users SET cards_in_hand = '{}' FROM players WHERE players.user_id = userid;
+UPDATE users SET (cards_in_hand, waiting_for_response) = ('{}', '') FROM players WHERE players.user_id = userid;
 DELETE FROM players WHERE players.user_id = userid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -277,14 +290,10 @@ DELETE FROM users WHERE id = userid;
 $$ LANGUAGE SQL VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION start_game(gameid char(5)) RETURNS integer AS $$
-DECLARE res integer;
-BEGIN
-UPDATE games SET has_begun = true WHERE id = gameid;
-SELECT "do_we_have_all_answers"(gameid) INTO res;
-RETURN res;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+CREATE OR REPLACE FUNCTION start_round(gameid char(5)) RETURNS SETOF integer AS $$
+UPDATE games SET (current_qcard, qcards_left, waiting_for_answers) = (question_cards[qcards_left], qcards_left - 1, true) WHERE games.id = gameid;
+SELECT "get_userids_we_need_answer"(gameid);
+$$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION update_timestamp() RETURNS trigger AS $$

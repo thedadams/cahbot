@@ -4,7 +4,6 @@ import (
 	"cahbot/secrets"
 	"cahbot/tgbotapi"
 	"crypto/sha512"
-	_ "database/sql"
 	"encoding/base64"
 	"html"
 	"log"
@@ -414,28 +413,16 @@ func (bot *CAHBot) BeginGame(GameID string) {
 		bot.SendMessageToGame(GameID, "We could not start the game because of an internal error.")
 		return
 	}
-	if tmp < 3 {
+	if tmp < 2 {
 		log.Printf("There aren't enough players in game with id " + GameID + " to start it.")
 		tx.Rollback()
 		bot.SendMessageToGame(GameID, "You really need at least 3 players to make it interesting.  Right now, you have "+strconv.Itoa(tmp)+".  Tell others to use the command '/join "+GameID+"' to join your game.")
 		return
 	}
 	log.Printf("Trying to start game with id %v.", GameID)
-	err = tx.QueryRow("SELECT start_game($1)", GameID).Scan(&tmp)
-	if err != nil {
-		log.Printf("ERROR: %v", err)
-		bot.SendMessageToGame(GameID, "We could not start the game because of an internal error.")
-		return
-	}
-	// At this point we commit the starting of the game.
 	tx.Commit()
-	if tmp == 1 {
-		log.Printf("Asking the Card czar to pick the best and/or worse answer.")
-		bot.ListAnswers(GameID)
-	} else {
-		bot.SendMessageToGame(GameID, "Get ready, we are starting the game!")
-		bot.StartRound(GameID)
-	}
+	bot.SendMessageToGame(GameID, "Get ready, we are starting the game!")
+	bot.StartRound(GameID)
 }
 
 func (bot *CAHBot) ChangeGameSettings(GameID string) {
@@ -487,22 +474,31 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 }
 
 // Sends a message show the players the question card.
-func (bot *CAHBot) DisplayQuestionCard(GameID string) {
+func (bot *CAHBot) DisplayQuestionCard(GameID string, AddCardsToPlayersHands bool) {
 	log.Printf("Getting question card index for game with id %v", GameID)
 	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return
 	}
 	var index int
 	err = tx.QueryRow("SELECT get_question_card($1)", GameID).Scan(&index)
-	tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return
 	}
+	log.Printf("The current question cards for game with id %v has index %v.", GameID, index)
+	if AddCardsToPlayersHands && bot.AllQuestionCards[index].NumAnswers > 1 {
+		_, err = tx.Exec("SELECT add_cards_to_all_in_game($1, $2)", GameID, bot.AllQuestionCards[index].NumAnswers-1)
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			return
+		}
+	}
+	tx.Commit()
 	log.Printf("Sending question card to game with ID %v...", GameID)
-	var message string = "Here is the question card:\n"
+	var message string = "Here is the question card:\n\n"
 	message += bot.AllQuestionCards[index].Text
 	bot.SendMessageToGame(GameID, html.UnescapeString(message))
 }
@@ -731,15 +727,15 @@ func (bot *CAHBot) StartRound(GameID string) {
 	if waiting {
 		bot.SendMessageToGame(GameID, "We are waiting for players to give answers.")
 	} else {
-		bot.DisplayQuestionCard(GameID)
-		rows, err := tx.Query("SELECT get_userids_we_need_answer($1)", GameID)
+		rows, err := tx.Query("SELECT start_round($1)", GameID)
 		defer rows.Close()
 		if err != nil {
 			log.Printf("ERROR: %v", err)
 			bot.SendMessageToGame(GameID, "We ran into an error and cannot start the next round.  You can report the error to my developer, @thedadams, or try again later.")
 			return
 		}
-		tx.Rollback()
+		tx.Commit()
+		bot.DisplayQuestionCard(GameID, true)
 		for rows.Next() {
 			var id int
 			err = rows.Scan(&id)
