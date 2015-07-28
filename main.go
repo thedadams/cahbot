@@ -26,7 +26,7 @@ func main() {
 	u.Timeout = 60
 
 	err = bot.UpdatesChan(u)
-	c := time.Tick(1 * time.Minute)
+	c := time.Tick(60 * time.Minute)
 	go func() {
 		for _ = range c {
 			log.Printf("Cleaning up old games.")

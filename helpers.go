@@ -27,11 +27,11 @@ func AnswerIsValid(bot *CAHBot, UserID int, Answer string) int {
 		return -1
 	}
 	response = response[1 : len(response)-1]
-	for i, val := range strings.Split(response, ",") {
+	for _, val := range strings.Split(response, ",") {
 		var tmp int
 		tmp, _ = strconv.Atoi(val)
 		if html.UnescapeString(bot.AllAnswerCards[tmp].Text) == Answer {
-			return i
+			return tmp
 		}
 	}
 	return -1
@@ -54,7 +54,7 @@ func BuildScoreList(rows *sql.Rows) string {
 		var response string
 		if err := rows.Scan(&response); err == nil {
 			arrResponse := strings.Split(response[1:len(response)-1], ",")
-			str += arrResponse[0] + " had " + arrResponse[1] + " Awesome Points\n"
+			str += strings.Replace(arrResponse[0], "\"", "", -1) + " had " + arrResponse[1] + " Awesome Points\n"
 		} else {
 			log.Printf("ERROR: %v", err)
 			return "ERROR"
@@ -85,12 +85,10 @@ func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 	}
 	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
 	if err != nil {
-		log.Printf("ERROR: %v", err)
 		return "", "", err
 	}
 	GameID = GameID[1 : len(GameID)-1]
 	return strings.Split(GameID, ",")[0], strings.Split(GameID, ",")[1], err
-
 }
 
 // Creates a random string for a Game ID.

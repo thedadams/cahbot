@@ -547,9 +547,9 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 	text := "Here are the submitted answers:\n\n"
 	cardsKeyboard := make([][]string, 1)
 	for i, val := range ShuffleAnswers(strings.Split(cards[1:len(cards)-1], "+=+\",")) {
-		text += html.UnescapeString(val[1:]) + "\n"
+		text += html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1)) + "\n"
 		cardsKeyboard[i] = make([]string, 1)
-		cardsKeyboard[i][0] = html.UnescapeString(val[1 : len(val)-1])
+		cardsKeyboard[i][0] = html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1))
 	}
 	log.Printf("Showing everyone the answers submitted for game %v.", GameID)
 	bot.SendMessageToGame(GameID, text)
@@ -614,8 +614,17 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 		bot.SendActionFailedMessage(UserID)
 		return
 	}
-	CurrentAnswer = strings.Replace(bot.AllQuestionCards[QuestionIndex].Text, "_", bot.AllAnswerCards[AnswerIndex].Text, 1)
-	_, err = tx.Exec("SELECT received_answer_from_user($1, $2, $3, $4)", UserID, AnswerIndex, CurrentAnswer, strings.Contains(CurrentAnswer, "_"))
+	err = tx.QueryRow("SELECT get_current_answer($1)", UserID).Scan(&CurrentAnswer)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	if CurrentAnswer == "" {
+		CurrentAnswer = bot.AllQuestionCards[QuestionIndex].Text
+	}
+	CurrentAnswer = strings.Replace(CurrentAnswer, "_", bot.AllAnswerCards[AnswerIndex].Text, 1)
+	_, err = tx.Exec("SELECT received_answer_from_user($1, $2, $3, $4)", UserID, AnswerIndex, CurrentAnswer, !strings.Contains(CurrentAnswer, "_"))
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)
@@ -629,6 +638,7 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 	}
 	if strings.Contains(CurrentAnswer, "_") {
 		log.Printf("We received a valid answer from user with id %v, but we need another answer.", UserID)
+		tx.Commit()
 		bot.ListCardsForUserWithMessage(GameID, UserID, "We received your answer, but this is a multi-answer questions.  Please choose another answer.")
 	} else {
 		log.Printf("We received a valid, complete answer from user with id %v.", UserID)
@@ -639,11 +649,11 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 			bot.SendActionFailedMessage(UserID)
 			return
 		}
+		tx.Commit()
 		if QuestionIndex == 1 {
 			go bot.ListAnswers(GameID)
 		}
 	}
-	tx.Commit()
 }
 
 // Remove a player from a game if the player is playing.
@@ -709,6 +719,7 @@ func (bot *CAHBot) SendGameSettings(GameID string, ChatID int) {
 
 // This method handles the starting/resuming of a round.
 func (bot *CAHBot) StartRound(GameID string) {
+	ids := make([]int, 1)
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
@@ -734,17 +745,17 @@ func (bot *CAHBot) StartRound(GameID string) {
 			bot.SendMessageToGame(GameID, "We ran into an error and cannot start the next round.  You can report the error to my developer, @thedadams, or try again later.")
 			return
 		}
-		tx.Commit()
-		bot.DisplayQuestionCard(GameID, true)
 		for rows.Next() {
-			var id int
-			err = rows.Scan(&id)
+			err = rows.Scan(&ids[len(ids)-1])
 			if err != nil {
 				log.Printf("ERROR: %v", err)
-			} else {
-				log.Printf("Asking %v for an answer card.", id)
-				bot.ListCardsForUserWithMessage(GameID, id, "Please pick an answer for the question.")
 			}
+		}
+		tx.Commit()
+		bot.DisplayQuestionCard(GameID, true)
+		for i := range ids {
+			log.Printf("Asking %v for an answer card.", ids[i])
+			bot.ListCardsForUserWithMessage(GameID, ids[i], "Please pick an answer for the question.")
 		}
 	}
 }
