@@ -63,9 +63,9 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION add_cards_to_all_in_game(gameid char(5), num_cards integer) RETURNS void AS $$
-DECLARE id users.id%TYPE;
+DECLARE id players.user_id%TYPE;
 BEGIN
-FOR id IN SELECT user_id FROM players WHERE players.game_id = gameid LOOP
+FOR id IN SELECT players.user_id FROM players, games WHERE players.game_id = gameid AND games.id = gameid AND players.user_id != games.current_czar LOOP
 PERFORM "add_cards_to_user_hand"(id, num_cards);
 END LOOP;
 END;
@@ -73,7 +73,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION add_cards_to_user_hand(userid integer, num_cards integer) RETURNS void AS $$
-UPDATE users SET cards_in_hand = cards_in_hand + subarray(games.answer_cards, games.acards_left - num_cards, num_cards) FROM games, players WHERE games.id = players.game_id AND players.user_id = userid;
+UPDATE users SET cards_in_hand = cards_in_hand + subarray(games.answer_cards, games.acards_left - num_cards + 1, num_cards) FROM games, players WHERE games.id = players.game_id AND players.user_id = users.id AND users.id = userid;
 UPDATE games SET acards_left = acards_left - num_cards FROM players WHERE games.id = players.game_id AND players.user_id = userid;
 $$ LANGUAGE SQL VOLATILE;
 
@@ -132,7 +132,7 @@ CREATE OR REPLACE FUNCTION czar_id(gameid char(5), status varchar(8)) RETURNS in
 DECLARE czarid integer;
 BEGIN
 SELECT current_czar INTO czarid FROM games WHERE id = gameid;
-UPDATE users SET waiting_for_response = status WHERE id = czarid;
+UPDATE users SET waiting_for_response = status WHERE users.id = czarid;
 RETURN czarid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -263,6 +263,7 @@ SELECT cards_in_hand INTO user_cards FROM users WHERE users.id = userid;
 UPDATE users SET (cards_in_hand, current_answer) = (user_cards - answer_index, answer) WHERE users.id = userid;
 IF finished THEN
 PERFORM "add_cards_to_user_hand"(userid, 1);
+UPDATE users SET waiting_for_response = '' WHERE users.id = userid;
 END IF;
 END;
 $$ LANGUAGE plpgsql VOLATILE;

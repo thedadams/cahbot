@@ -19,7 +19,8 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
 		bot.ProccessCommand(&update.Message, GameID)
-	} else if messageType == "message" && Response != "" {
+	} else if messageType == "message" && Response != "\"\"" {
+		log.Printf("We received a message from %v, but are expecting a response for %v.", update.Message.From.ID, Response)
 		switch Response {
 		case "settings":
 			// Handle the change of a setting here.
@@ -499,7 +500,7 @@ func (bot *CAHBot) DisplayQuestionCard(GameID string, AddCardsToPlayersHands boo
 	tx.Commit()
 	log.Printf("Sending question card to game with ID %v...", GameID)
 	var message string = "Here is the question card:\n\n"
-	message += bot.AllQuestionCards[index].Text
+	message += strings.Replace(html.UnescapeString(bot.AllQuestionCards[index].Text), "\\\"", "", -1)
 	bot.SendMessageToGame(GameID, html.UnescapeString(message))
 }
 
@@ -547,9 +548,9 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 	text := "Here are the submitted answers:\n\n"
 	cardsKeyboard := make([][]string, 1)
 	for i, val := range ShuffleAnswers(strings.Split(cards[1:len(cards)-1], "+=+\",")) {
-		text += html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1)) + "\n"
+		text += strings.Replace(html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1)), "\\\"", "", -1) + "\n"
 		cardsKeyboard[i] = make([]string, 1)
-		cardsKeyboard[i][0] = html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1))
+		cardsKeyboard[i][0] = strings.Replace(html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1)), "\\\"", "", -1)
 	}
 	log.Printf("Showing everyone the answers submitted for game %v.", GameID)
 	bot.SendMessageToGame(GameID, text)
@@ -559,6 +560,7 @@ func (bot *CAHBot) ListAnswers(GameID string) {
 		log.Printf("ERROR: %v", err)
 		return
 	}
+	tx.Commit()
 	log.Printf("Asking the czar, %v, to pick an answer for game with id %v.", czarID, GameID)
 	message := tgbotapi.NewMessage(czarID, "Czar, please choose the best answer.")
 	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{cardsKeyboard, true, true, false}
@@ -622,6 +624,10 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 	}
 	if CurrentAnswer == "" {
 		CurrentAnswer = bot.AllQuestionCards[QuestionIndex].Text
+		// If the question is really a question without any blanks, we just list the answer.
+		if !strings.Contains(CurrentAnswer, "_") {
+			CurrentAnswer = bot.AllAnswerCards[AnswerIndex].Text
+		}
 	}
 	CurrentAnswer = strings.Replace(CurrentAnswer, "_", bot.AllAnswerCards[AnswerIndex].Text, 1)
 	_, err = tx.Exec("SELECT received_answer_from_user($1, $2, $3, $4)", UserID, AnswerIndex, CurrentAnswer, !strings.Contains(CurrentAnswer, "_"))
