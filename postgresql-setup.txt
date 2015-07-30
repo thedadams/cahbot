@@ -132,7 +132,7 @@ CREATE OR REPLACE FUNCTION czar_id(gameid char(5), status varchar(8)) RETURNS in
 DECLARE czarid integer;
 BEGIN
 SELECT current_czar INTO czarid FROM games WHERE id = gameid;
-UPDATE users SET waiting_for_response = status WHERE users.id = czarid;
+SELECT update_user_status(players.id, status) FROM players, users WHERE players.user_id = czarid;
 RETURN czarid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -170,6 +170,12 @@ UPDATE users SET (cards_in_hand, waiting_for_response, current_answer) = ('{}', 
 DELETE FROM games WHERE games.id = gameid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION end_round(gameid char(5)) RETURNS void AS $$
+UPDATE games SET (current_qcard, current_czar, waiting_for_answers) = (-1, czar_order[((idx(czar_order, current_czar) + icount(czar_order)) % (icount(czar_order))) + 1], false) WHERE games.id = gameid;
+UPDATE users SET current_answer = '' FROM players WHERE players.game_id = gameid AND players.user_id = users.id;
+$$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION game_settings(gameid char(5)) RETURNS text[] AS $$
@@ -317,4 +323,9 @@ $$ LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION whoisczar(gameid char(5)) RETURNS text AS $$
 SELECT users.display_name FROM players, games, users WHERE games.id = gameid AND players.game_id = games.id AND players.user_id = games.current_czar AND users.id = players.user_id;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION update_user_status(userid integer, status varchar(8)) RETURNS void AS $$
+UPDATE users SET waiting_for_response = status WHERE users.id = userid;
 $$ LANGUAGE SQL VOLATILE;

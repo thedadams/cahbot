@@ -24,6 +24,12 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 		switch Response {
 		case "settings":
 			// Handle the change of a setting here.
+			if !SettingIsValid(bot, update.Message.Text) {
+				log.Printf("The text we received was not a valid setting.  We assume it was a message to the game so we are forwarding it.")
+				bot.ForwardMessageToGame(&update.Message, GameID)
+			} else {
+				bot.ChangeGameSettings(update.Message.From.ID, GameID, update.Message.Text)
+			}
 		case "answer":
 			// Handle the receipt of an answer here.
 			answer := AnswerIsValid(bot, update.Message.From.ID, update.Message.Text)
@@ -35,10 +41,29 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 			}
 		case "tradeincard":
 			// Handle the trading in of a card here.
+			answer := AnswerIsValid(bot, update.Message.From.ID, update.Message.Text)
+			if answer == -1 {
+				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+				bot.ForwardMessageToGame(&update.Message, GameID)
+			} else {
+				bot.TradeInCard(update.Message.From.ID, GameID, answer)
+			}
 		case "czarbest":
 			// Handle the receipt of a czar picking best answer here.
+			if !CzarChoiceIsValid(bot, update.Message.Text) {
+				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+				bot.ForwardMessageToGame(&update.Message, GameID)
+			} else {
+				bot.CzarChoseAnswer(update.Message.From.ID, GameID, update.Message.Text, true)
+			}
 		case "czarworst":
 			// Handle the receipt of a czar picking the worst answer here.
+			if !CzarChoiceIsValid(bot, update.Message.Text) {
+				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+				bot.ForwardMessageToGame(&update.Message, GameID)
+			} else {
+				bot.CzarChoseAnswer(update.Message.From.ID, GameID, update.Message.Text, false)
+			}
 		}
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
 		if err != nil {
@@ -294,7 +319,22 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		}
 	case "changesettings":
 		if GameID != "" {
-			bot.ChangeGameSettings(GameID)
+			bot.SendGameSettings(GameID, m.Chat.ID)
+			tx, err := bot.db_conn.Begin()
+			defer tx.Rollback()
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(m.Chat.ID)
+				return
+			}
+			_, err = tx.Exec("SELECT update_user_status($1, $2)", m.From.ID, "settings")
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(m.Chat.ID)
+				return
+			}
+			tx.Commit()
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Which setting would you like to change?  You can choose one of the following (case insensitive):\nMystery Player\nTrade In Cards\nNumber Of Cards To Trade In\nNumber Of Cards In Hand\nPick Worst\nPoints To Win."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -426,7 +466,7 @@ func (bot *CAHBot) BeginGame(GameID string) {
 	bot.StartRound(GameID)
 }
 
-func (bot *CAHBot) ChangeGameSettings(GameID string) {
+func (bot *CAHBot) ChangeGameSettings(UserID int, GameID string, Setting string) {
 
 }
 
@@ -472,6 +512,11 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 	}
 	log.Printf("Game with id %v created successfully!", GameID)
 	return GameID
+}
+
+// This method handles the czar choosing an answer.
+func (bot *CAHBot) CzarChoseAnswer(UserID int, GameID string, Answer string, BestAnswer bool) {
+
 }
 
 // Sends a message show the players the question card.
@@ -766,7 +811,7 @@ func (bot *CAHBot) StartRound(GameID string) {
 	}
 }
 
-// This method handles the czar choosing an answer.
-func (bot *CAHBot) CzarChoseAnswer(GameID string) {
+// This method handles the trading in of a card at the end of the round.
+func (bot *CAHGame) TradeInCard(UserID int, GameID string, AnswerIndex int) {
 
 }
