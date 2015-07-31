@@ -63,6 +63,12 @@ func BuildScoreList(rows *sql.Rows) string {
 	return str
 }
 
+// Check to see if we got a valid answer from the czar.
+func CzarChoiceIsValid(bot *CAHBot, Answer string) bool {
+
+	return false
+}
+
 // Get the scores for a game.
 func GameScores(GameID string, db *sql.DB) string {
 	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
@@ -101,6 +107,12 @@ func GetRandomID() string {
 		id += characters[rand.Intn(n)]
 	}
 	return id
+}
+
+// Check to see if we received valid setting from the user.
+func SettingIsValid(bot *CAHBot, Setting string) bool {
+
+	return false
 }
 
 // This function shuffles the answers so they don't come out in the same order every time.

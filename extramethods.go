@@ -770,7 +770,8 @@ func (bot *CAHBot) SendGameSettings(GameID string, ChatID int) {
 
 // This method handles the starting/resuming of a round.
 func (bot *CAHBot) StartRound(GameID string) {
-	ids := make([]int, 1)
+	log.Printf("Attempting to start the next round for game with id %v.", GameID)
+	ids := make([]int, 0)
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
@@ -797,12 +798,29 @@ func (bot *CAHBot) StartRound(GameID string) {
 			return
 		}
 		for rows.Next() {
-			err = rows.Scan(&ids[len(ids)-1])
+			var tmp int
+			err = rows.Scan(&tmp)
 			if err != nil {
 				log.Printf("ERROR: %v", err)
 			}
+			ids = append(ids, tmp)
 		}
 		tx.Commit()
+		log.Printf("%v", ids)
+		if ids[0] == -1 {
+			log.Printf("We cannot start the next round for game with id %v because someone is changing the settings.", GameID)
+			var tmp string
+			tx, err = bot.db_conn.Begin()
+			err = tx.QueryRow("SELECT get_display_name($1)", ids[1]).Scan(&tmp)
+			tx.Rollback()
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendMessageToGame(GameID, "We cannot begin the next round because someone is changing the settings of the game.")
+				return
+			}
+			bot.SendMessageToGame(GameID, "We cannot start the next round because "+tmp+" is changing the settings of the game.")
+			return
+		}
 		bot.DisplayQuestionCard(GameID, true)
 		for i := range ids {
 			log.Printf("Asking %v for an answer card.", ids[i])
@@ -812,6 +830,6 @@ func (bot *CAHBot) StartRound(GameID string) {
 }
 
 // This method handles the trading in of a card at the end of the round.
-func (bot *CAHGame) TradeInCard(UserID int, GameID string, AnswerIndex int) {
+func (bot *CAHBot) TradeInCard(UserID int, GameID string, AnswerIndex int) {
 
 }

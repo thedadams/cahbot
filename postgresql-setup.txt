@@ -299,9 +299,19 @@ $$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION start_round(gameid char(5)) RETURNS SETOF integer AS $$
+DECLARE status users%ROWTYPE;
+BEGIN
+FOR status IN SELECT users.* FROM users, players WHERE players.user_id = users.id AND players.game_id = gameid LOOP
+IF status.waiting_for_response != '' THEN
+RETURN NEXT -1;
+RETURN NEXT status.id;
+RETURN;
+END IF;
+END LOOP;
 UPDATE games SET (current_qcard, qcards_left, waiting_for_answers) = (question_cards[qcards_left], qcards_left - 1, true) WHERE games.id = gameid;
 SELECT "get_userids_we_need_answer"(gameid);
-$$ LANGUAGE SQL VOLATILE;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION update_timestamp() RETURNS trigger AS $$
