@@ -319,7 +319,6 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		}
 	case "changesettings":
 		if GameID != "" {
-			bot.SendGameSettings(GameID, m.Chat.ID)
 			tx, err := bot.db_conn.Begin()
 			defer tx.Rollback()
 			if err != nil {
@@ -327,6 +326,14 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				bot.SendActionFailedMessage(m.Chat.ID)
 				return
 			}
+			var InRound bool
+			err = tx.SELECT("SELECT in_round FROM games WHERE games.id = $1", GameID).Scan(&InRound)
+			if err != nil || InRound {
+				log.Printf("User attempting to change the settings for game with id %v in the middle of a round.", GameID)
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You cannot change settings while the game is in the middle of a round.  Please wait until the round is finished and try again."))
+				return
+			}
+			bot.SendGameSettings(GameID, m.Chat.ID)
 			_, err = tx.Exec("SELECT update_user_status($1, $2)", m.From.ID, "settings")
 			if err != nil {
 				log.Printf("ERROR: %v", err)

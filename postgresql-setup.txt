@@ -1,4 +1,4 @@
-CREATE TABLE games (id character(5) NOT NULL, answer_cards integer[], question_cards integer[], qcards_left integer, acards_left integer, czar_order integer[], current_czar integer, current_qcard integer, waiting_for_answers boolean, mystery_player boolean, trade_in_cards boolean, num_cards_to_trade integer, pick_worst boolean, num_cards_in_hand integer, points_to_win integer, last_modified timestamp without time zone);
+CREATE TABLE games (id character(5) NOT NULL, answer_cards integer[], question_cards integer[], qcards_left integer, acards_left integer, czar_order integer[], current_czar integer, current_qcard integer, in_round boolean, waiting_for_answers boolean, mystery_player boolean, trade_in_cards boolean, num_cards_to_trade integer, pick_worst boolean, num_cards_in_hand integer, points_to_win integer, last_modified timestamp without time zone);
 
 
 ALTER TABLE ONLY games ADD CONSTRAINT games_pkey PRIMARY KEY (id);
@@ -80,7 +80,7 @@ $$ LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION add_game(gameid char(5), qcards integer[], acards integer[], user_create_id integer) RETURNS void AS $$
 BEGIN
-INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, czar_order, current_czar, current_qcard, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win, last_modified) VALUES(gameid, qcards, acards, array_length(qcards, 1), array_length(acards, 1), '{}', user_create_id, -1, false, false, false, 0, false, 7, 7, transaction_timestamp());
+INSERT INTO games(id, question_cards, answer_cards, qcards_left, acards_left, czar_order, current_czar, current_qcard, waiting_for_answers, mystery_player, trade_in_cards, num_cards_to_trade, pick_worst, num_cards_in_hand, points_to_win, last_modified, in_round) VALUES(gameid, qcards, acards, array_length(qcards, 1), array_length(acards, 1), '{}', user_create_id, -1, false, false, false, 0, false, 7, 7, transaction_timestamp(), false);
 PERFORM shuffle_answer_cards(gameid);
 PERFORM shuffle_question_cards(gameid);
 END;
@@ -173,7 +173,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION end_round(gameid char(5)) RETURNS void AS $$
-UPDATE games SET (current_qcard, current_czar, waiting_for_answers) = (-1, czar_order[((idx(czar_order, current_czar) + icount(czar_order)) % (icount(czar_order))) + 1], false) WHERE games.id = gameid;
+UPDATE games SET (current_qcard, current_czar, waiting_for_answers, in_round) = (-1, czar_order[((idx(czar_order, current_czar) + icount(czar_order)) % (icount(czar_order))) + 1], false, false) WHERE games.id = gameid;
 UPDATE users SET current_answer = '' FROM players WHERE players.game_id = gameid AND players.user_id = users.id;
 $$ LANGUAGE SQL VOLATILE;
 
@@ -308,7 +308,7 @@ RETURN NEXT status.id;
 RETURN;
 END IF;
 END LOOP;
-UPDATE games SET (current_qcard, qcards_left, waiting_for_answers) = (question_cards[qcards_left], qcards_left - 1, true) WHERE games.id = gameid;
+UPDATE games SET (current_qcard, qcards_left, waiting_for_answers, in_round) = (question_cards[qcards_left], qcards_left - 1, true, true) WHERE games.id = gameid;
 SELECT "get_userids_we_need_answer"(gameid);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
