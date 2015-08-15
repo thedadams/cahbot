@@ -24,46 +24,21 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 		switch Response {
 		case "settings":
 			// Handle the change of a setting here.
-			if !SettingIsValid(bot, update.Message.Text) {
-				log.Printf("The text we received was not a valid setting.  We assume it was a message to the game so we are forwarding it.")
-				bot.ForwardMessageToGame(&update.Message, GameID)
-			} else {
-				bot.ChangeGameSettings(update.Message.From.ID, GameID, update.Message.Text)
-			}
+			HandlePlayerResponse(bot, GameID, &update.Message, SettingIsValid(bot, update.Message.Text), update.Message.Text, bot.ChangeGameSettings)
 		case "answer":
 			// Handle the receipt of an answer here.
 			answer := AnswerIsValid(bot, update.Message.From.ID, update.Message.Text)
-			if answer == -1 {
-				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
-				bot.ForwardMessageToGame(&update.Message, GameID)
-			} else {
-				bot.RecievedAnswerFromPlayer(update.Message.From.ID, GameID, answer)
-			}
+			HandlePlayerResponse(bot, GameID, &update.Message, answer, strconv.Itoa(answer), bot.RecievedAnswerFromPlayer)
 		case "tradeincard":
 			// Handle the trading in of a card here.
 			answer := AnswerIsValid(bot, update.Message.From.ID, update.Message.Text)
-			if answer == -1 {
-				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
-				bot.ForwardMessageToGame(&update.Message, GameID)
-			} else {
-				bot.TradeInCard(update.Message.From.ID, GameID, answer)
-			}
+			HandlePlayerResponse(bot, GameID, &update.Message, answer, strconv.Itoa(answer), bot.TradeInCard)
 		case "czarbest":
 			// Handle the receipt of a czar picking best answer here.
-			if !CzarChoiceIsValid(bot, update.Message.Text) {
-				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
-				bot.ForwardMessageToGame(&update.Message, GameID)
-			} else {
-				bot.CzarChoseAnswer(update.Message.From.ID, GameID, update.Message.Text, true)
-			}
+			HandleCzarResponse(bot, GameID, &update.Message, Response, CzarChoiceIsValid(bot, update.Message.Text))
 		case "czarworst":
 			// Handle the receipt of a czar picking the worst answer here.
-			if !CzarChoiceIsValid(bot, update.Message.Text) {
-				log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
-				bot.ForwardMessageToGame(&update.Message, GameID)
-			} else {
-				bot.CzarChoseAnswer(update.Message.From.ID, GameID, update.Message.Text, false)
-			}
+			HandleCzarResponse(bot, GameID, &update.Message, Response, CzarChoiceIsValid(bot, update.Message.Text))
 		}
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
 		if err != nil {
@@ -327,7 +302,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				return
 			}
 			var InRound bool
-			err = tx.SELECT("SELECT in_round FROM games WHERE games.id = $1", GameID).Scan(&InRound)
+			err = tx.QueryRow("SELECT in_round FROM games WHERE games.id = $1", GameID).Scan(&InRound)
 			if err != nil || InRound {
 				log.Printf("User attempting to change the settings for game with id %v in the middle of a round.", GameID)
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You cannot change settings while the game is in the middle of a round.  Please wait until the round is finished and try again."))
@@ -651,7 +626,7 @@ func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, UserID int, text s
 }
 
 // Handle the receipt of an answer from a player.
-func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerIndex int) {
+func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, Answer string) {
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
@@ -659,6 +634,7 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 		bot.SendActionFailedMessage(UserID)
 		return
 	}
+	AnswerIndex, _ := strconv.Atoi(Answer)
 	var QuestionIndex int
 	var DisplayName string
 	var CurrentAnswer string
@@ -681,7 +657,7 @@ func (bot *CAHBot) RecievedAnswerFromPlayer(UserID int, GameID string, AnswerInd
 			CurrentAnswer = bot.AllAnswerCards[AnswerIndex].Text
 		}
 	}
-	CurrentAnswer = strings.Replace(CurrentAnswer, "_", bot.AllAnswerCards[AnswerIndex].Text, 1)
+	CurrentAnswer = strings.Replace(CurrentAnswer, "_", TrimPunctuation(bot.AllAnswerCards[AnswerIndex].Text), 1)
 	_, err = tx.Exec("SELECT received_answer_from_user($1, $2, $3, $4)", UserID, AnswerIndex, CurrentAnswer, !strings.Contains(CurrentAnswer, "_"))
 	if err != nil {
 		log.Printf("ERROR: %v", err)
@@ -837,6 +813,6 @@ func (bot *CAHBot) StartRound(GameID string) {
 }
 
 // This method handles the trading in of a card at the end of the round.
-func (bot *CAHBot) TradeInCard(UserID int, GameID string, AnswerIndex int) {
+func (bot *CAHBot) TradeInCard(UserID int, GameID string, Answer string) {
 
 }

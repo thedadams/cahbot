@@ -132,7 +132,7 @@ CREATE OR REPLACE FUNCTION czar_id(gameid char(5), status varchar(8)) RETURNS in
 DECLARE czarid integer;
 BEGIN
 SELECT current_czar INTO czarid FROM games WHERE id = gameid;
-SELECT update_user_status(players.id, status) FROM players, users WHERE players.user_id = czarid;
+PERFORM update_user_status(users.id, status) FROM users WHERE users.id = czarid;
 RETURN czarid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -309,7 +309,7 @@ RETURN;
 END IF;
 END LOOP;
 UPDATE games SET (current_qcard, qcards_left, waiting_for_answers, in_round) = (question_cards[qcards_left], qcards_left - 1, true, true) WHERE games.id = gameid;
-SELECT "get_userids_we_need_answer"(gameid);
+RETURN QUERY SELECT "get_userids_we_need_answer"(gameid);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 

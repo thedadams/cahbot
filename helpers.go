@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cahbot/tgbotapi"
 	"database/sql"
 	"html"
 	"log"
@@ -64,9 +65,9 @@ func BuildScoreList(rows *sql.Rows) string {
 }
 
 // Check to see if we got a valid answer from the czar.
-func CzarChoiceIsValid(bot *CAHBot, Answer string) bool {
+func CzarChoiceIsValid(bot *CAHBot, Answer string) int {
 
-	return false
+	return -1
 }
 
 // Get the scores for a game.
@@ -109,10 +110,39 @@ func GetRandomID() string {
 	return id
 }
 
-// Check to see if we received valid setting from the user.
-func SettingIsValid(bot *CAHBot, Setting string) bool {
+// Handles a response from the card czar.
+func HandleCzarResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, Response string, CheckDigit int) {
+	if CheckDigit == -1 {
+		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+		bot.ForwardMessageToGame(Message, GameID)
+	} else {
+		bot.CzarChoseAnswer(Message.From.ID, GameID, Message.Text, strings.Contains(Response, "best"))
+	}
+}
 
+// Handles a response that is not a command from a player.
+func HandlePlayerResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, CheckDigit int, ThirdArg string, Handler func(int, string, string)) {
+	if CheckDigit == -1 {
+		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
+		bot.ForwardMessageToGame(Message, GameID)
+	} else {
+		Handler(Message.From.ID, GameID, ThirdArg)
+	}
+}
+
+// Checks to see if the last character of a string is punctuation.
+func LastCharactorIsPunctuation(TheString string) bool {
+	length := len(TheString) - 1
+	if string(TheString[length]) == "." || string(TheString[length]) == "!" || string(TheString[length]) == "?" {
+		return true
+	}
 	return false
+}
+
+// Check to see if we received valid setting from the user.
+func SettingIsValid(bot *CAHBot, Setting string) int {
+
+	return -1
 }
 
 // This function shuffles the answers so they don't come out in the same order every time.
@@ -124,4 +154,12 @@ func ShuffleAnswers(arr []string) []string {
 		arr[i], arr[j] = arr[j], arr[i]
 	}
 	return arr
+}
+
+// Trims the punctuation on an answer to help the grammar.
+func TrimPunctuation(TheString string) string {
+	if !LastCharactorIsPunctuation(TheString) {
+		return TheString
+	}
+	return TrimPunctuation(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(TheString, "!"), "?"), "."))
 }
