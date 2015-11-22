@@ -1,13 +1,13 @@
 package main
 
 import (
-	"cahbot/tgbotapi"
 	"database/sql"
 	"html"
 	"log"
 	"math/rand"
 	"strconv"
 	"strings"
+	"telegram-bot-api"
 	"time"
 )
 

@@ -1,14 +1,13 @@
 package main
 
 import (
-	"cahbot/secrets"
-	"cahbot/tgbotapi"
 	"crypto/sha512"
 	"encoding/base64"
 	"html"
 	"log"
 	"strconv"
 	"strings"
+	"telegram-bot-api"
 )
 
 // This is the starting point for handling an update from chat.
@@ -342,7 +341,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	case "logging":
 		if len(strings.Fields(m.Text)) > 1 {
 			hasher := sha512.New()
-			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), secrets.AppPass) {
+			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), AppPass) {
 				bot.Debug = !bot.Debug
 				log.Printf("Debugging/verbose logging has been turned to %v.", bot.Debug)
 			}
@@ -540,7 +539,7 @@ func (bot *CAHBot) CzarChoseAnswer(UserID int, GameID string, Answer string, Bes
 		}
 		tx.Commit()
 		bot.SendMessageToGame(GameID, "The new Card Czar is "+winner+".  They will start the new round soon.")
-		bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are the Card Czar for the next round.  Use the command /next to start the next round."))
+		bot.SendMessage(tgbotapi.NewMessage(czarid, "You are the Card Czar for the next round.  Use the command /next to start the next round."))
 	}
 }
 

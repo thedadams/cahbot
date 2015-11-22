@@ -1,17 +1,16 @@
 package main
 
 import (
-	"cahbot/secrets"
-	"cahbot/tgbotapi"
 	"log"
 	"strconv"
 	"strings"
+	"telegram-bot-api"
 	"time"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	bot, err := NewCAHBot(secrets.Token)
+	bot, err := NewCAHBot(Token)
 	if err != nil {
 		log.Panic(err)
 	}

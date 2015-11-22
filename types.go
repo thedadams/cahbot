@@ -1,12 +1,11 @@
 package main
 
 import (
-	"cahbot/secrets"
-	"cahbot/tgbotapi"
 	"database/sql"
 	"encoding/json"
 	_ "github.com/lib/pq"
 	"log"
+	"telegram-bot-api"
 )
 
 // A wrapper for tgbotapi. We need this wrapper to add new methods.
@@ -23,16 +22,16 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	GenericBot, err := tgbotapi.NewBotAPI(token)
 	// Need to get the card data
 	var AllQuestionCards []QuestionCard
-	err = json.Unmarshal(secrets.AllQuestions, &AllQuestionCards)
+	err = json.Unmarshal(AllQuestions, &AllQuestionCards)
 	if err != nil {
 		log.Printf("%v", err)
 	}
 	var AllAnswerCards []AnswerCard
-	err = json.Unmarshal(secrets.AllAnswers, &AllAnswerCards)
+	err = json.Unmarshal(AllAnswers, &AllAnswerCards)
 	if err != nil {
 		log.Printf("%v", err)
 	}
-	db, err := sql.Open("postgres", "sslmode=disable user=cahbot dbname=cahgames password="+secrets.DBPass)
+	db, err := sql.Open("postgres", "sslmode=disable user=cahbot dbname=cahgames password="+DBPass)
 	if err != nil {
 		log.Fatal(err)
 	}
