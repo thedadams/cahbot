@@ -19,7 +19,7 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
 		bot.ProccessCommand(&update.Message, GameID)
-	} else if messageType == "message" && Response != "\"\"" {
+	} else if messageType == "message" && Response != "" {
 		log.Printf("We received a message from %v, but are expecting a response for %v.", update.Message.From.ID, Response)
 		switch Response {
 		case "settings":
@@ -226,7 +226,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		}
 	case "end":
 		if GameID != "" {
-			bot.EndGame(GameID, m.From)
+			bot.EndGame(GameID, m.From.String(), false)
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -498,7 +498,46 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 
 // This method handles the czar choosing an answer.
 func (bot *CAHBot) CzarChoseAnswer(UserID int, GameID string, Answer string, BestAnswer bool) {
-
+	log.Printf("The Card Czar for game with id %v chose a valid answer.", GameID)
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	var gameOver bool
+	var winner string
+	rows, err := tx.Query("SELECT czar_chose_answer($1,$2)", GameID, Answer)
+	defer rows.Close()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		bot.SendActionFailedMessage(UserID)
+		return
+	}
+	rows.Next()
+	rows.Scan(&winner)
+	rows.Next()
+	rows.Scan(&gameOver)
+	if BestAnswer {
+		bot.SendMessageToGame(GameID, "The czar chose the best answer: "+Answer+"\n\nThis was "+winner+"'s answer.  You get one Awesome Point!")
+	} else {
+		bot.SendMessageToGame(GameID, "The czar chose the worst answer: "+Answer+"\n\nThis was "+winner+"'s answer.  You lose one Awesome Point.")
+	}
+	if gameOver {
+		tx.Commit()
+		bot.EndGame(GameID, "", true)
+	} else {
+		tx.Exec("SELECT end_round($1)", GameID)
+		err = tx.QueryRow("SELECT who_is_czar($1)", GameID).Scan(&winner)
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendActionFailedMessage(UserID)
+			return
+		}
+		tx.Commit()
+		bot.SendMessageToGame(GameID, "The new Card Czar is "+winner+".  Use the command '/next' to start the next round.")
+	}
 }
 
 // Sends a message show the players the question card.
@@ -532,7 +571,7 @@ func (bot *CAHBot) DisplayQuestionCard(GameID string, AddCardsToPlayersHands boo
 }
 
 // This method stops and ends an already created game.
-func (bot *CAHBot) EndGame(GameID string, User tgbotapi.User) {
+func (bot *CAHBot) EndGame(GameID string, UserThatStoppedGame string, SomeoneWon bool) {
 	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
@@ -548,9 +587,9 @@ func (bot *CAHBot) EndGame(GameID string, User tgbotapi.User) {
 		bot.SendMessageToGame(GameID, "There was an error when I tried to end the game.  You can try again or contact my developer @thedadams.")
 		return
 	}
-	if User.ID != -1 {
+	if !SomeoneWon {
 		// Someone ended the game.
-		bot.SendMessageToGame(GameID, "The game has been stopped "+User.String()+".  Here are the scores:\n"+BuildScoreList(rows)+"Thanks for playing!")
+		bot.SendMessageToGame(GameID, "The game has been stopped by "+UserThatStoppedGame+".\nHere are the scores:\n"+BuildScoreList(rows)+"Thanks for playing!")
 	} else {
 		// The game ended because someone won.
 		bot.SendMessageToGame(GameID, "The game has ended.  Here are the scores:\n"+BuildScoreList(rows)+"Thanks for playing!")
@@ -719,7 +758,7 @@ func (bot *CAHBot) RemovePlayerFromGame(GameID string, User tgbotapi.User) {
 	tx.Commit()
 	if numPlayersInGame == 0 {
 		log.Printf("There are no more players in game with id %v.  We shall end it.", GameID)
-		bot.EndGame(GameID, User)
+		bot.EndGame(GameID, User.String(), false)
 	} else {
 		bot.SendMessageToGame(GameID, User.String()+" has left the game with a score of "+strings.Split(str[1:len(str)-1], ",")[1]+".")
 	}

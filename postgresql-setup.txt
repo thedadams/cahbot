@@ -128,6 +128,23 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION czar_chose_answer(gameid char(5), answer text) RETURNS TABLE(display_name varchar(64), game_over bool) AS $$
+DECLARE player_points integer;
+DECLARE max_points integer;
+DECLARE winnerID integer;
+DECLARE winner varchar(64);
+BEGIN
+UPDATE users SET points = points + 1 WHERE current_answer = answer RETURNING users.id, users.display_name INTO winnerID, winner;
+SELECT points_to_win, points INTO max_points, player_points FROM games, users WHERE games.id = gameid AND users.id = winnerID;
+IF max_points = player_points THEN
+RETURN QUERY TABLE(winner, true);
+END IF;
+RETURN QUERY TABLE(winner, false);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+
 CREATE OR REPLACE FUNCTION czar_id(gameid char(5), status varchar(8)) RETURNS integer AS $$
 DECLARE czarid integer;
 BEGIN
@@ -159,7 +176,7 @@ BEGIN
 SELECT users.id INTO id FROM users WHERE users.id = userid;
 RETURN (id != -1);
 END;
-$$ LANGUAGE plpgsql VOLATILE VOLATILE;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION end_game(gameid char(5)) RETURNS TABLE(name varchar(64), points text) AS $$
