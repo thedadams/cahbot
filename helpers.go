@@ -18,14 +18,14 @@ func AnswerIsValid(bot *CAHBot, UserID int, Answer string) int {
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)
-		return -1
+		return 0
 	}
 	var response string
 	err = tx.QueryRow("SELECT get_user_cards($1)", UserID).Scan(&response)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)
-		return -1
+		return 0
 	}
 	response = response[1 : len(response)-1]
 	for _, val := range strings.Split(response, ",") {
@@ -39,7 +39,7 @@ func AnswerIsValid(bot *CAHBot, UserID int, Answer string) int {
 }
 
 // Transforms an array for input into postges database.
-func ArrayTransforForPostgres(theArray []int) string {
+func ArrayTransformForPostgres(theArray []int) string {
 	value := "{"
 	for item := range theArray {
 		value += strconv.Itoa(theArray[item]) + ","
@@ -65,8 +65,21 @@ func BuildScoreList(rows *sql.Rows) string {
 }
 
 // Check to see if we got a valid answer from the czar.
-func CzarChoiceIsValid(bot *CAHBot, Answer string) int {
-
+func CzarChoiceIsValid(bot *CAHBot, GameID, Answer string) int {
+	tx, err := db.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		return 0
+	}
+	var answers string
+	err = tx.QueryRow("SELECT get_answers($1)", GameID).Scan(&answers)
+	tx.Commit()
+	for i, val := range ShuffleAnswers(strings.Split(cards[1:len(cards)-1], "+=+\",")) {
+		if Answer == strings.Replace(html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1)), "\\\"", "", -1) {
+			return 1
+		}
+	}
 	return -1
 }
 
@@ -115,6 +128,11 @@ func HandleCzarResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, R
 	if CheckDigit == -1 {
 		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
 		bot.ForwardMessageToGame(Message, GameID)
+	} else if CheckDigit == 0 {
+		log.Printf("GameID: %v - We encountered an error when trying to validate the Card Czar's choice.  We are reporting that error to the Card Czar.", GameID)
+		bot.SendActionFailedMessage(Message.From.ID)
+		log.Printf("GameID: %v - Asking the Czar to try again...", GameID)
+		bot.ListAnswers(GameID)
 	} else {
 		bot.CzarChoseAnswer(Message.From.ID, GameID, Message.Text, strings.Contains(Response, "best"))
 	}
@@ -125,6 +143,11 @@ func HandlePlayerResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message,
 	if CheckDigit == -1 {
 		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
 		bot.ForwardMessageToGame(Message, GameID)
+	} else if CheckDigit == 0 {
+		log.Printf("GameID: %v - We encountered an error when trying to validate the player's choice.  We are reporting that error to the player with ID %v.", GameID, Message.From.ID)
+		bot.SendActionFailedMessage(Message.From.ID)
+		log.Printf("GameID: %v - Asking the player with ID %v to try again...", GameID, Message.From.ID)
+		bot.ListCardsForUserWithMessage(GameID, Message.From.ID, "Please try picking an answer again.")
 	} else {
 		Handler(Message.From.ID, GameID, ThirdArg)
 	}

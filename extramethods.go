@@ -35,10 +35,10 @@ func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 			HandlePlayerResponse(bot, GameID, &update.Message, answer, strconv.Itoa(answer), bot.TradeInCard)
 		case "czarbest":
 			// Handle the receipt of a czar picking best answer here.
-			HandleCzarResponse(bot, GameID, &update.Message, Response, CzarChoiceIsValid(bot, update.Message.Text))
+			HandleCzarResponse(bot, GameID, &update.Message, Response, CzarChoiceIsValid(bot, GameID, update.Message.Text))
 		case "czarworst":
 			// Handle the receipt of a czar picking the worst answer here.
-			HandleCzarResponse(bot, GameID, &update.Message, Response, CzarChoiceIsValid(bot, update.Message.Text))
+			HandleCzarResponse(bot, GameID, &update.Message, Response, CzarChoiceIsValid(bot, GameID, update.Message.Text))
 		}
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
 		if err != nil {
@@ -168,7 +168,6 @@ func (bot *CAHBot) DetectKindMessageRecieved(m *tgbotapi.Message) string {
 	if m.Location.Longitude != 0 && m.Location.Latitude != 0 {
 		return "location"
 	}
-
 	return "undetermined"
 }
 
@@ -485,7 +484,7 @@ func (bot *CAHBot) CreateNewGame(ChatID int, User tgbotapi.User) string {
 		bot.SendActionFailedMessage(ChatID)
 		return ""
 	}
-	tx.Exec("SELECT add_game($1,$2,$3,$4)", GameID, ArrayTransforForPostgres(ShuffledQuestionCards), ArrayTransforForPostgres(ShuffledAnswerCards), User.ID)
+	tx.Exec("SELECT add_game($1,$2,$3,$4)", GameID, ArrayTransformForPostgres(ShuffledQuestionCards), ArrayTransformForPostgres(ShuffledAnswerCards), User.ID)
 	err = tx.Commit()
 	if err != nil {
 		log.Printf("Game could not be created. ERROR: %v", err)
@@ -506,19 +505,16 @@ func (bot *CAHBot) CzarChoseAnswer(UserID int, GameID string, Answer string, Bes
 		bot.SendActionFailedMessage(UserID)
 		return
 	}
-	var gameOver bool
-	var winner string
-	rows, err := tx.Query("SELECT czar_chose_answer($1,$2)", GameID, Answer)
-	defer rows.Close()
+	var response string
+	err = tx.Query("SELECT czar_chose_answer($1,$2)", GameID, Answer).Scan(&response)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)
 		return
 	}
-	rows.Next()
-	rows.Scan(&winner)
-	rows.Next()
-	rows.Scan(&gameOver)
+	response = response[1 : len(response)-1]
+	winner := strings.Split(response, ",")[0]
+	gameOver := strings.ToUpper(strings.Split(response, ",")[1]) == "TRUE"
 	if BestAnswer {
 		bot.SendMessageToGame(GameID, "The czar chose the best answer: "+Answer+"\n\nThis was "+winner+"'s answer.  You get one Awesome Point!")
 	} else {
@@ -772,10 +768,9 @@ func (bot *CAHBot) SendGameSettings(GameID string, ChatID int) {
 		tx.Rollback()
 		return
 	}
-	// This is really bad, but I want to see if it works.
 	var settings string
 	err = tx.QueryRow("SELECT game_settings($1)", GameID).Scan(&settings)
-	tx.Rollback()
+	tx.Commit()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		return
