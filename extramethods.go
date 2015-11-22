@@ -107,7 +107,7 @@ func (bot *CAHBot) ForwardMessageToGame(m *tgbotapi.Message, GameID string) {
 
 // Send a 'There is no game' message
 func (bot *CAHBot) SendNoGameMessage(ChatID int) {
-	bot.SendMessage(tgbotapi.NewMessage(ChatID, "You are currently not in a game.  Use command '/create' to create a new one or '/join <id>' to join a game with an id."))
+	bot.SendMessage(tgbotapi.NewMessage(ChatID, "You are currently not in a game.  Use command /create to create a new one or /join <id> to join a game with an id."))
 }
 
 func (bot *CAHBot) WrongCommand(ChatID int) {
@@ -178,14 +178,14 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	// Get the command.
 	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
 	case "start":
-		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command '/create'.  If you create a game, you will be given a 5 character id you can share with friends so they can join you.  You can also join a game using the '/join <id>' command where the '<id>' is replaced with a game id created by someone else.  To see all available commands, use '/help'."))
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command /create.  If you create a game, you will be given a 5 character id you can share with friends so they can join you.  You can also join a game using the /join <id> command where the <id> is replaced with a game id created by someone else.  To see all available commands, use /help."))
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "While you are in a game, any (non-command) message you send to me will be automatically forwarded to everyone else in the game so you're all in the loop."))
 	case "help":
 		// TODO: use helpers to build a help message.
 		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "A help message should go here."))
 	case "create":
 		if GameID != "" {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+GameID+" and cannot create another game.  You can leave your current game with the command '/leave'."))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+GameID+" and cannot create another game.  You can leave your current game with the command /leave."))
 		} else {
 			ID := bot.CreateNewGame(m.Chat.ID, m.From)
 			if ID != "" {
@@ -215,7 +215,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 			return
 		}
 		tx.Commit()
-		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You have been removed from our records. If you ever want to come back, send the command '/start'.  Thank you for playing."))
+		bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You have been removed from our records. If you ever want to come back, send the command /start.  Thank you for playing."))
 
 	case "begin":
 		if GameID != "" {
@@ -232,7 +232,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	case "join":
 		if len(strings.Fields(m.Text)) > 1 {
 			if GameID != "" {
-				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+GameID+" and cannot join another game.  You can leave your current game with the command '/leave'."))
+				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You are already part of a game with id "+GameID+" and cannot join another game.  You can leave your current game with the command /leave."))
 			} else {
 				// If the user is not part of another game, we check to see if they id they
 				// game is valid.
@@ -249,11 +249,11 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 					// The id is valid and we add them.
 					bot.AddPlayerToGame(strings.Fields(m.Text)[1], m.From)
 				} else {
-					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game with id "+strings.Fields(m.Text)[1]+".  Please try again with a new id or use '/create' to create a game."))
+					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game with id "+strings.Fields(m.Text)[1]+".  Please try again with a new id or use /create to create a game."))
 				}
 			}
 		} else {
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You did not enter a game id.  Try again with the format '/join <id>'."))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You did not enter a game id.  Try again with the format /join <id>."))
 		}
 	case "gameid":
 		if GameID != "" {
@@ -372,7 +372,7 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 		var tmp bool
 		row := tx.QueryRow("SELECT is_player_in_game($2,$1)", GameID, User.ID)
 		if _ = row.Scan(&tmp); tmp {
-			bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are already playing in this game.  Use command '/leave' to remove yourself."))
+			bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are already playing in this game.  Use command /leave to remove yourself."))
 		} else {
 			log.Printf("Adding %v to the game %v...", User, GameID)
 			_, err = tx.Exec("SELECT add_player_to_game($1, $2)", GameID, User.ID)
@@ -506,7 +506,7 @@ func (bot *CAHBot) CzarChoseAnswer(UserID int, GameID string, Answer string, Bes
 		return
 	}
 	var response string
-	err = tx.Query("SELECT czar_chose_answer($1,$2)", GameID, Answer).Scan(&response)
+	err = tx.QueryRow("SELECT czar_chose_answer($1,$2)", GameID, Answer).Scan(&response)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
 		bot.SendActionFailedMessage(UserID)
@@ -525,14 +525,22 @@ func (bot *CAHBot) CzarChoseAnswer(UserID int, GameID string, Answer string, Bes
 		bot.EndGame(GameID, "", true)
 	} else {
 		tx.Exec("SELECT end_round($1)", GameID)
-		err = tx.QueryRow("SELECT who_is_czar($1)", GameID).Scan(&winner)
+		err = tx.QueryRow("SELECT whoisczar($1)", GameID).Scan(&winner)
+		if err != nil {
+			log.Printf("ERROR: %v", err)
+			bot.SendActionFailedMessage(UserID)
+			return
+		}
+		var czarid int
+		err = tx.QueryRow("SELECT czar_id($1, $2)", GameID, "").Scan(&czarid)
 		if err != nil {
 			log.Printf("ERROR: %v", err)
 			bot.SendActionFailedMessage(UserID)
 			return
 		}
 		tx.Commit()
-		bot.SendMessageToGame(GameID, "The new Card Czar is "+winner+".  Use the command '/next' to start the next round.")
+		bot.SendMessageToGame(GameID, "The new Card Czar is "+winner+".  They will start the new round soon.")
+		bot.SendMessage(tgbotapi.NewMessage(User.ID, "You are the Card Czar for the next round.  Use the command /next to start the next round."))
 	}
 }
 
@@ -823,7 +831,6 @@ func (bot *CAHBot) StartRound(GameID string) {
 			ids = append(ids, tmp)
 		}
 		tx.Commit()
-		log.Printf("%v", ids)
 		if ids[0] == -1 {
 			log.Printf("We cannot start the next round for game with id %v because someone is changing the settings.", GameID)
 			var tmp string

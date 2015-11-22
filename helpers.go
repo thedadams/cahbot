@@ -66,7 +66,7 @@ func BuildScoreList(rows *sql.Rows) string {
 
 // Check to see if we got a valid answer from the czar.
 func CzarChoiceIsValid(bot *CAHBot, GameID, Answer string) int {
-	tx, err := db.Begin()
+	tx, err := bot.db_conn.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
@@ -75,7 +75,7 @@ func CzarChoiceIsValid(bot *CAHBot, GameID, Answer string) int {
 	var answers string
 	err = tx.QueryRow("SELECT get_answers($1)", GameID).Scan(&answers)
 	tx.Commit()
-	for i, val := range ShuffleAnswers(strings.Split(cards[1:len(cards)-1], "+=+\",")) {
+	for _, val := range ShuffleAnswers(strings.Split(answers[1:len(answers)-1], "+=+\",")) {
 		if Answer == strings.Replace(html.UnescapeString(strings.Replace(val[1:len(val)-1], "+=+", "", -1)), "\\\"", "", -1) {
 			return 1
 		}

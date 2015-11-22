@@ -131,12 +131,22 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION czar_chose_answer(gameid char(5), answer text) RETURNS text[] AS $$
 DECLARE ans record;
 DECLARE info text[];
+DECLARE czar_update text;
 BEGIN
 UPDATE users SET points = points + 1 WHERE current_answer = answer;
 SELECT users.display_name, games.points_to_win, users.points, games.pick_worst INTO ans FROM games, users WHERE games.id = gameid AND users.current_answer = answer;
+IF ans.pick_worst THEN
+SELECT waiting_for_response INTO czar_update FROM users, games WHERE users.id = games.current_czar;
+IF czar_update = 'czarbest' THEN
+UPDATE users SET waiting_for_response = 'czarworst' FROM games WHERE current_czar = users.id AND games.id = gameid;
+END IF;
+ELSE
+UPDATE users SET waiting_for_response = '' FROM games WHERE current_czar = users.id AND games.id = gameid;
+END IF;
 info[1] := ans.display_name;
 info[2] := (ans.points_to_win = ans.points)::text;
 info[3] := ans.pick_worst::text;
+RETURN info;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -180,7 +190,7 @@ CREATE OR REPLACE FUNCTION end_game(gameid char(5)) RETURNS TABLE(name varchar(6
 BEGIN
 RETURN QUERY
 SELECT users.display_name, users.points::text FROM players, games, users WHERE games.id = gameid AND games.id = players.game_id AND players.user_id = users.id;
-UPDATE users SET (cards_in_hand, waiting_for_response, current_answer) = ('{}', '', '') FROM players WHERE players.game_id = gameid;
+UPDATE users SET (cards_in_hand, waiting_for_response, current_answer, points) = ('{}', '', '', 0) FROM players WHERE players.game_id = gameid;
 DELETE FROM games WHERE games.id = gameid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
