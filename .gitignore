@@ -23,5 +23,6 @@ _testmain.go
 *.test
 *.prof
 secrets.go
+separate.py
 testcah.go
 *.log
