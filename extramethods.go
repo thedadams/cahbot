@@ -307,14 +307,51 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				return
 			}
 			bot.SendGameSettings(GameID, m.Chat.ID)
-			_, err = tx.Exec("SELECT update_user_status($1, $2)", m.From.ID, "settings")
+			_, err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, "settings", '')
 			if err != nil {
 				log.Printf("ERROR: %v", err)
 				bot.SendActionFailedMessage(m.Chat.ID)
 				return
 			}
 			tx.Commit()
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Which setting would you like to change?  You can choose one of the following (case insensitive):\nMystery Player\nTrade In Cards\nNumber Of Cards To Trade In\nNumber Of Cards In Hand\nPick Worst\nPoints To Win."))
+			// Settings that need to support changing: Mystery Player, Trade In Cards, Number of Cards to Trade In, Number of Cards In Hand, Pick Worst Also, Points To Win.
+			//settingsKeyboard := make([][]string, 1)
+			//settingsKeyboard[0] = make([]string, 1)
+			//settingsKeyboard[0][0] = "Pick worst card also"
+			//settingsKeyboard[1] = make([]string, 1)
+			//settingsKeyboard[1][0] = "Trade in cards at the end of every round"
+			//settingsKeyboard[2] = make([]string, 1)
+			//settingsKeyboard[2][0] = "Number of cards to trade in"
+			//settingsKeyboard[3] = make([]string, 1)
+			//settingsKeyboard[3][0] = "Number of cards in hand"
+			//settingsKeyboard[4] = make([]string, 1)
+			//settingsKeyboard[4][0] = "Number of points to win"
+			//settingsKeyboard[5] = make([]string, 1)
+			//settingsKeyboard[5][0] = "Mystery player"
+			message := tgbotapi.NewMessage(m.Chat.ID, "Which setting would you like to change?  You can choose one of the following (case insensitive):")
+			//message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{settingsKeyboard, true, true, false}
+			bot.SendMessage(message)
+		} else {
+			bot.SendNoGameMessage(m.Chat.ID)
+		}
+	case "cancel":
+		if GameID != "" {
+			tx, err := bot.db_conn.Begin()
+			defer tx.Rollback()
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(m.Chat.ID)
+				return
+			}
+			var userSettingStatus string
+			err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, '', '')
+			if err != nil {
+				log.Printf("ERROR: %v", err)
+				bot.SendActionFailedMessage(m.Chat.ID)
+				return
+			}
+			tx.Commit()
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Setting change canceled."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -447,7 +484,13 @@ func (bot *CAHBot) BeginGame(GameID string) {
 }
 
 func (bot *CAHBot) ChangeGameSettings(UserID int, GameID string, Setting string) {
-
+	tx, err := bot.db_conn.Begin()
+	defer tx.Rollback()
+	if err != nil {
+		log.Printf("GameID: %v - ERROR: %v", GameID, err)
+		bot.SendMessageToGame(GameID, "We could not start the game because of an internal error.")
+		return
+	}
 }
 
 // This method creates a new game.

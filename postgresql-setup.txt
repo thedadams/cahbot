@@ -4,7 +4,7 @@ CREATE TABLE games (id character(5) NOT NULL, answer_cards integer[], question_c
 ALTER TABLE ONLY games ADD CONSTRAINT games_pkey PRIMARY KEY (id);
 
 
-CREATE TABLE users (id integer NOT NULL, first_name character varying(32), last_name character varying(32), username character varying(32), points integer, cards_in_hand integer[], current_answer text, display_name character varying(64), waiting_for_response character varying(8));
+CREATE TABLE users (id integer NOT NULL, first_name character varying(32), last_name character varying(32), username character varying(32), points integer, cards_in_hand integer[], current_answer text, display_name character varying(64), waiting_for_response character varying(8), setting_status character varying(8));
 
 
 ALTER TABLE ONLY users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
@@ -103,8 +103,14 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION add_user(userid integer, first_name varchar(32), last_name varchar(32), username varchar(32), display_name varchar(64)) RETURNS integer AS $$
-INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_answer, waiting_for_response) VALUES(add_user.userid, add_user.first_name, add_user.last_name,add_user. username, add_user.display_name, 0, NULL, '', '');
+INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_answer, waiting_for_response, setting_status) VALUES(add_user.userid, add_user.first_name, add_user.last_name,add_user. username, add_user.display_name, 0, NULL, '', '', '');
 SELECT users.id FROM users WHERE users.id = add_user.userid;
+$$ LANGUAGE SQL VOLATILE;
+
+
+
+CREATE OR REPLACE FUNCTION change_pick_worst_setting(gameid char(5), change_to boolean) RETURNS VOID AS $$
+UPDATE games SET pick_worst = change_to WHERE id = gameid;
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -156,7 +162,7 @@ CREATE OR REPLACE FUNCTION czar_id(gameid char(5), status varchar(8)) RETURNS in
 DECLARE czarid integer;
 BEGIN
 SELECT current_czar INTO czarid FROM games WHERE id = gameid;
-PERFORM update_user_status(users.id, status) FROM users WHERE users.id = czarid;
+PERFORM update_user_status(users.id, status, '') FROM users WHERE users.id = czarid;
 RETURN czarid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -260,6 +266,16 @@ SELECT cards_in_hand FROM users WHERE id = userid;
 $$ LANGUAGE SQL VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION get_user_setting_status(userid integer) RETURNS varchar(8) as $$
+SELECT setting_status FROM users WHERE id = userid;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION get_user_status(userid integer) RETURNS text as $$
+SELECT waiting_for_response FROM users WHERE id = userid;
+$$ LANGUAGE SQL VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION get_userids_for_game(gameid char(5)) RETURNS SETOF integer
 AS $$
 SELECT players.user_id FROM players, users WHERE players.game_id = gameid AND users.id = players.user_id;
@@ -360,6 +376,6 @@ SELECT users.display_name FROM players, games, users WHERE games.id = gameid AND
 $$ LANGUAGE SQL VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION update_user_status(userid integer, status varchar(8)) RETURNS void AS $$
-UPDATE users SET waiting_for_response = status WHERE users.id = userid;
+CREATE OR REPLACE FUNCTION update_user_status(userid integer, response_status varchar(8), user_setting_status varchar(8)) RETURNS void AS $$
+UPDATE users SET (waiting_for_response, setting_status) = (response_status, user_setting_status) WHERE users.id = userid;
 $$ LANGUAGE SQL VOLATILE;
