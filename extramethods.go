@@ -245,8 +245,15 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				var exists bool
 				row := tx.QueryRow("SELECT check_game_exists($1)", strings.Fields(m.Text)[1])
 				if _ = row.Scan(&exists); exists {
-					// The id is valid and we add them.
-					bot.AddPlayerToGame(strings.Fields(m.Text)[1], m.From)
+					// If the game is in the middle of a round, we don't add them yet.
+					var InRound bool
+					err = tx.QueryRow("SELECT is_game_in_round($1)", GameID).Scan(&InRound)
+					if err != nil || InRound {
+						bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "The game you are trying to join is in the middle of a round.  Please wait until they are finished to join."))
+					} else {
+						// The id is valid and we add them and the game is not in-round.
+						bot.AddPlayerToGame(strings.Fields(m.Text)[1], m.From)
+					}
 				} else {
 					bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "There is no game with id "+strings.Fields(m.Text)[1]+".  Please try again with a new id or use /create to create a game."))
 				}
@@ -300,14 +307,14 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				return
 			}
 			var InRound bool
-			err = tx.QueryRow("SELECT in_round FROM games WHERE games.id = $1", GameID).Scan(&InRound)
+			err = tx.QueryRow("SELECT is_game_in_round($1)", GameID).Scan(&InRound)
 			if err != nil || InRound {
 				log.Printf("User attempting to change the settings for game with id %v in the middle of a round.", GameID)
 				bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "You cannot change settings while the game is in the middle of a round.  Please wait until the round is finished and try again."))
 				return
 			}
 			bot.SendGameSettings(GameID, m.Chat.ID)
-			_, err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, "settings", '')
+			_, err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, "settings", "")
 			if err != nil {
 				log.Printf("ERROR: %v", err)
 				bot.SendActionFailedMessage(m.Chat.ID)
@@ -344,14 +351,14 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				return
 			}
 			var userSettingStatus string
-			err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, '', '')
+			err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, "", "")
 			if err != nil {
 				log.Printf("ERROR: %v", err)
 				bot.SendActionFailedMessage(m.Chat.ID)
 				return
 			}
 			tx.Commit()
-			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Setting change canceled."))
+			bot.SendMessage(tgbotapi.NewMessage(m.Chat.ID, "Action canceled."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
@@ -423,6 +430,8 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 				return
 			}
 			bot.SendMessageToGame(GameID, User.String()+" has joined the game!")
+			bot.SendMessage(tgbotapi.NewMessage(User.ID, "Welcome to the game!  Here are the currect game settings for your reivew.")
+			bot.SendGameSettings(GameID, User.ID)
 		}
 	}
 }
