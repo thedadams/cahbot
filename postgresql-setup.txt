@@ -297,6 +297,11 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION is_game_in_round(gameid char(5)) RETURNS boolean AS $$
+SELECT in_round FROM games WHERE id = gameid;
+$$ LANGUAGE SQL VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION num_players_in_game(gameid char(5)) RETURNS bigint AS $$
 SELECT COUNT(*) FROM players WHERE players.game_id = gameid;
 $$ LANGUAGE SQL VOLATILE;
