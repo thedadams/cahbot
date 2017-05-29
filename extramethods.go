@@ -430,7 +430,7 @@ func (bot *CAHBot) AddPlayerToGame(GameID string, User tgbotapi.User) {
 				return
 			}
 			bot.SendMessageToGame(GameID, User.String()+" has joined the game!")
-			bot.SendMessage(tgbotapi.NewMessage(User.ID, "Welcome to the game!  Here are the currect game settings for your reivew.")
+			bot.SendMessage(tgbotapi.NewMessage(User.ID, "Welcome to the game!  Here are the currect game settings for your reivew."))
 			bot.SendGameSettings(GameID, User.ID)
 		}
 	}
