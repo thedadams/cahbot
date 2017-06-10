@@ -4,8 +4,9 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"telegram-bot-api"
 	"time"
+
+	"github.com/thedadams/telegram-bot-api"
 )
 
 func main() {
@@ -14,7 +15,7 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
-	defer bot.db_conn.Close()
+	defer bot.DBConn.Close()
 
 	// Remove when deployed
 	// bot.Debug = true
@@ -24,12 +25,12 @@ func main() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	err = bot.UpdatesChan(u)
+	updates, err := bot.GetUpdatesChan(u)
 	c := time.Tick(60 * time.Minute)
 	go func() {
 		for _ = range c {
 			log.Printf("Cleaning up old games.")
-			tx, err := bot.db_conn.Begin()
+			tx, err := bot.DBConn.Begin()
 			if err != nil {
 				log.Printf("ERROR: %v", err)
 				log.Printf("Failed to clean up old games.")
@@ -45,18 +46,18 @@ func main() {
 				continue
 			}
 			for rows.Next() {
-				var gameid string
-				var userid int
-				if err := rows.Scan(&gameid); err != nil {
+				var GameID string
+				var UserID int64
+				if err := rows.Scan(&GameID); err != nil {
 					log.Printf("ERROR: %v", err)
-					log.Printf("Failed to clean up old games with id %v.", gameid)
+					log.Printf("Failed to clean up old games with id %v.", GameID)
 					continue
 				} else {
-					gameid = strings.Replace(strings.Replace(gameid, "(", "", 1), ")", "", 1)
-					userid, _ = strconv.Atoi(strings.Split(gameid, ",")[1])
-					gameid = strings.Split(gameid, ",")[0]
-					log.Printf("Game with id %v deleted.  Let user with id %v know about it.", gameid, userid)
-					bot.SendMessage(tgbotapi.NewMessage(userid, "Your game has been deleted because of inactivity."))
+					GameID = strings.Replace(strings.Replace(GameID, "(", "", 1), ")", "", 1)
+					UserID, _ = strconv.ParseInt(strings.Split(GameID, ",")[1], 10, 64)
+					GameID = strings.Split(GameID, ",")[0]
+					log.Printf("Game with id %v deleted.  Let user with id %v know about it.", GameID, UserID)
+					bot.Send(tgbotapi.NewMessage(UserID, "Your game has been deleted because of inactivity."))
 				}
 			}
 			if err := rows.Err(); err != nil {
@@ -67,7 +68,7 @@ func main() {
 		}
 	}()
 
-	for update := range bot.Updates {
+	for update := range updates {
 		go bot.HandleUpdate(&update)
 	}
 }

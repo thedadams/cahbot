@@ -7,24 +7,25 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
-	"telegram-bot-api"
 	"time"
+
+	"github.com/thedadams/telegram-bot-api"
 )
 
-// This check that the answer we received from the user is a valid answer.
-func AnswerIsValid(bot *CAHBot, UserID int, Answer string) int {
-	tx, err := bot.db_conn.Begin()
+// AnswerIsValid checks that the answer we received from the user is a valid answer.
+func AnswerIsValid(bot *CAHBot, ChatID int64, Answer string) int {
+	tx, err := bot.DBConn.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		bot.SendActionFailedMessage(UserID)
+		bot.SendActionFailedMessage(ChatID)
 		return 0
 	}
 	var response string
-	err = tx.QueryRow("SELECT get_user_cards($1)", UserID).Scan(&response)
+	err = tx.QueryRow("SELECT get_user_cards($1)", ChatID).Scan(&response)
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		bot.SendActionFailedMessage(UserID)
+		bot.SendActionFailedMessage(ChatID)
 		return 0
 	}
 	response = response[1 : len(response)-1]
@@ -38,7 +39,7 @@ func AnswerIsValid(bot *CAHBot, UserID int, Answer string) int {
 	return -1
 }
 
-// Transforms an array for input into postges database.
+// ArrayTransformForPostgres transforms an array for input into postgres database.
 func ArrayTransformForPostgres(theArray []int) string {
 	value := "{"
 	for item := range theArray {
@@ -48,9 +49,9 @@ func ArrayTransformForPostgres(theArray []int) string {
 	return value
 }
 
-// This builds the score list from a return sql.Rows.
+// BuildScoreList builds the score list from a return sql.Rows.
 func BuildScoreList(rows *sql.Rows) string {
-	var str string = ""
+	str := ""
 	for rows.Next() {
 		var response string
 		if err := rows.Scan(&response); err == nil {
@@ -64,9 +65,9 @@ func BuildScoreList(rows *sql.Rows) string {
 	return str
 }
 
-// Check to see if we got a valid answer from the czar.
+// CzarChoiceIsValid checks to see if we got a valid answer from the czar.
 func CzarChoiceIsValid(bot *CAHBot, GameID, Answer string) int {
-	tx, err := bot.db_conn.Begin()
+	tx, err := bot.DBConn.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
@@ -83,7 +84,7 @@ func CzarChoiceIsValid(bot *CAHBot, GameID, Answer string) int {
 	return -1
 }
 
-// Get the scores for a game.
+// GameScores gets the scores for a game.
 func GameScores(GameID string, db *sql.DB) string {
 	rows, err := db.Query("SELECT get_player_scores($1)", GameID)
 	defer rows.Close()
@@ -94,7 +95,7 @@ func GameScores(GameID string, db *sql.DB) string {
 	return BuildScoreList(rows)
 }
 
-// This function gets the GameID for a player.
+// GetGameID gets the GameID for a player.
 func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 	var GameID string
 	tx, err := db.Begin()
@@ -103,7 +104,7 @@ func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 		log.Printf("ERROR: %v", err)
 		return "", "", err
 	}
-	err = tx.QueryRow("SELECT get_gameid($1)", UserID).Scan(&GameID)
+	err = tx.QueryRow("SELECT get_game_id($1)", UserID).Scan(&GameID)
 	if err != nil {
 		return "", "", err
 	}
@@ -111,9 +112,9 @@ func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 	return strings.Split(GameID, ",")[0], strings.Split(GameID, ",")[1], err
 }
 
-// Creates a random string for a Game ID.
+// GetRandomID creates a random string for a Game ID.
 func GetRandomID() string {
-	var id string = ""
+	id := ""
 	characters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "!", "#", "$", "@", "?", "-", "&", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 	n := len(characters)
 	rand.Seed(time.Now().UnixNano())
@@ -123,37 +124,37 @@ func GetRandomID() string {
 	return id
 }
 
-// Handles a response from the card czar.
+// HandleCzarResponse handles a response from the card czar.
 func HandleCzarResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, Response string, CheckDigit int) {
 	if CheckDigit == -1 {
 		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
 		bot.ForwardMessageToGame(Message, GameID)
 	} else if CheckDigit == 0 {
 		log.Printf("GameID: %v - We encountered an error when trying to validate the Card Czar's choice.  We are reporting that error to the Card Czar.", GameID)
-		bot.SendActionFailedMessage(Message.From.ID)
+		bot.SendActionFailedMessage(Message.Chat.ID)
 		log.Printf("GameID: %v - Asking the Czar to try again...", GameID)
 		bot.ListAnswers(GameID)
 	} else {
-		bot.CzarChoseAnswer(Message.From.ID, GameID, Message.Text, strings.Contains(Response, "best"))
+		bot.CzarChoseAnswer(Message.Chat.ID, GameID, Message.Text, strings.Contains(Response, "best"))
 	}
 }
 
-// Handles a response that is not a command from a player.
-func HandlePlayerResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, CheckDigit int, ThirdArg string, Handler func(int, string, string)) {
+// HandlePlayerResponse handles a response that is not a command from a player.
+func HandlePlayerResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, CheckDigit int, ThirdArg string, Handler func(int64, string, string)) {
 	if CheckDigit == -1 {
 		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
 		bot.ForwardMessageToGame(Message, GameID)
 	} else if CheckDigit == 0 {
 		log.Printf("GameID: %v - We encountered an error when trying to validate the player's choice.  We are reporting that error to the player with ID %v.", GameID, Message.From.ID)
-		bot.SendActionFailedMessage(Message.From.ID)
+		bot.SendActionFailedMessage(Message.Chat.ID)
 		log.Printf("GameID: %v - Asking the player with ID %v to try again...", GameID, Message.From.ID)
-		bot.ListCardsForUserWithMessage(GameID, Message.From.ID, "Please try picking an answer again.")
+		bot.ListCardsForUserWithMessage(GameID, Message.Chat.ID, "Please try picking an answer again.")
 	} else {
-		Handler(Message.From.ID, GameID, ThirdArg)
+		Handler(Message.Chat.ID, GameID, ThirdArg)
 	}
 }
 
-// Checks to see if the last character of a string is punctuation.
+// LastCharactorIsPunctuation checks to see if the last character of a string is punctuation.
 func LastCharactorIsPunctuation(TheString string) bool {
 	length := len(TheString) - 1
 	if string(TheString[length]) == "." || string(TheString[length]) == "!" || string(TheString[length]) == "?" {
@@ -162,13 +163,13 @@ func LastCharactorIsPunctuation(TheString string) bool {
 	return false
 }
 
-// Check to see if we received valid setting from the user.
+// SettingIsValid checks to see if we received valid setting from the user.
 func SettingIsValid(bot *CAHBot, Setting string) int {
 
 	return -1
 }
 
-// This function shuffles the answers so they don't come out in the same order every time.
+// ShuffleAnswers shuffles the answers so they don't come out in the same order every time.
 func ShuffleAnswers(arr []string) []string {
 	rand.Seed(time.Now().UnixNano())
 
@@ -179,7 +180,7 @@ func ShuffleAnswers(arr []string) []string {
 	return arr
 }
 
-// Trims the punctuation on an answer to help the grammar.
+// TrimPunctuation trims the punctuation on an answer to help the grammar.
 func TrimPunctuation(TheString string) string {
 	if !LastCharactorIsPunctuation(TheString) {
 		return TheString

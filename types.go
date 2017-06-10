@@ -3,21 +3,21 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	_ "github.com/lib/pq"
 	"log"
-	"telegram-bot-api"
+
+	_ "github.com/lib/pq"
+	"github.com/thedadams/telegram-bot-api"
 )
 
-// A wrapper for tgbotapi. We need this wrapper to add new methods.
+// CAHBot inherits from tgbotapi.
 type CAHBot struct {
 	*tgbotapi.BotAPI
-	db_conn          *sql.DB
+	DBConn           *sql.DB
 	AllQuestionCards []QuestionCard `json:"all_question_cards"`
 	AllAnswerCards   []AnswerCard   `json:"all_answer_cards"`
 }
 
-// This creates a new CAHBot, which is basically a wrapper for tgbotapi.BotAPI.
-// We need this wrapper to add the desired methods.
+// NewCAHBot creates a new CAHBot.
 func NewCAHBot(token string) (*CAHBot, error) {
 	GenericBot, err := tgbotapi.NewBotAPI(token)
 	// Need to get the card data
@@ -38,17 +38,17 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	return &CAHBot{GenericBot, db, AllQuestionCards, AllAnswerCards}, err
 }
 
-// Question card
+// QuestionCard represents a white card in CAH.
 type QuestionCard struct {
-	ID         int    `json:"id""`
+	ID         int    `json:"id"`
 	Text       string `json:"text"`
 	NumAnswers int    `json:"numAnswers"`
 	Expansion  string `json:"expansion"`
 }
 
-// Question card
+// AnswerCard represents a black card in CAH.
 type AnswerCard struct {
-	ID        int    `json:"id""`
+	ID        int    `json:"id"`
 	Text      string `json:"text"`
 	Expansion string `json:"expansion"`
 }
