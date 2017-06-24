@@ -96,7 +96,7 @@ func GameScores(GameID string, db *sql.DB) string {
 }
 
 // GetGameID gets the GameID for a player.
-func GetGameID(UserID int, db *sql.DB) (string, string, error) {
+func GetGameID(UserID int, ChatID int64, db *sql.DB) (string, string, error) {
 	var GameID string
 	tx, err := db.Begin()
 	defer tx.Rollback()
@@ -104,7 +104,7 @@ func GetGameID(UserID int, db *sql.DB) (string, string, error) {
 		log.Printf("ERROR: %v", err)
 		return "", "", err
 	}
-	err = tx.QueryRow("SELECT get_game_id($1)", UserID).Scan(&GameID)
+	err = tx.QueryRow("SELECT get_game_id($1, $2)", UserID, ChatID).Scan(&GameID)
 	if err != nil {
 		return "", "", err
 	}

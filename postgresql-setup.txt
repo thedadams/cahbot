@@ -4,7 +4,7 @@ CREATE TABLE games (id character(5) NOT NULL, answer_cards integer[], question_c
 ALTER TABLE ONLY games ADD CONSTRAINT games_p_key PRIMARY KEY (id);
 
 
-CREATE TABLE users (id integer NOT NULL, first_name character varying(32), last_name character varying(32), username character varying(32), points integer, cards_in_hand integer[], current_answer text, display_name character varying(64), waiting_for_response character varying(8), setting_status character varying(8));
+CREATE TABLE users (id integer NOT NULL, chat_id bigint NOT NULL, first_name character varying(32), last_name character varying(32), username character varying(32), points integer, cards_in_hand integer[], current_answer text, display_name character varying(64), waiting_for_response character varying(8), setting_status character varying(8));
 
 
 ALTER TABLE ONLY users ADD CONSTRAINT users_p_key PRIMARY KEY (id);
@@ -102,9 +102,8 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION add_user(user_id integer, first_name varchar(32), last_name varchar(32), username varchar(32), display_name varchar(64)) RETURNS integer AS $$
-INSERT INTO users (id, first_name, last_name, username, display_name, points, cards_in_hand, current_answer, waiting_for_response, setting_status) VALUES(add_user.user_id, add_user.first_name, add_user.last_name,add_user. username, add_user.display_name, 0, NULL, '', '', '');
-SELECT users.id FROM users WHERE users.id = add_user.user_id;
+CREATE OR REPLACE FUNCTION add_user(user_id integer, chat_id bigint, first_name varchar(32), last_name varchar(32), username varchar(32), display_name varchar(64)) RETURNS void AS $$
+INSERT INTO users (id, chat_id, first_name, last_name, username, display_name, points, cards_in_hand, current_answer, waiting_for_response, setting_status) VALUES(add_user.user_id, add_user.chat_id, add_user.first_name, add_user.last_name,add_user. username, add_user.display_name, 0, NULL, '', '', '');
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -195,9 +194,9 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION end_game(game_id char(5)) RETURNS TABLE(name varchar(64), points text) AS $$
 BEGIN
 RETURN QUERY
-SELECT users.display_name, users.points::text FROM players, games, users WHERE games.id = game_id AND games.id = players.game_id AND players.user_id = users.id;
-UPDATE users SET (cards_in_hand, waiting_for_response, current_answer, points) = ('{}', '', '', 0) FROM players WHERE players.game_id = game_id;
-DELETE FROM games WHERE games.id = game_id;
+SELECT users.display_name, users.points::text FROM players, games, users WHERE games.id = end_game.game_id AND games.id = players.game_id AND players.user_id = users.id;
+UPDATE users SET (cards_in_hand, waiting_for_response, current_answer, points) = ('{}', '', '', 0) FROM players WHERE players.game_id = end_game.game_id;
+DELETE FROM games WHERE games.id = end_game.game_id;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -248,9 +247,17 @@ SELECT display_name FROM users WHERE id = user_id;
 $$ LANGUAGE SQL VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION get_game_id(user_id integer) RETURNS record AS $$
-SELECT players.game_id, users.waiting_for_response FROM players, users WHERE players.user_id = user_id AND players.user_id = users.id;
-$$ LANGUAGE SQL VOLATILE;
+CREATE OR REPLACE FUNCTION get_game_id(user_id integer, chat_id bigint) RETURNS TABLE(game_id character(5), response varchar(8)) AS $$
+DECLARE c_id bigint;
+BEGIN
+SELECT users.chat_id INTO c_id FROM users WHERE users.id = get_game_id.user_id;
+IF c_id != chat_id THEN
+UPDATE users SET users.chat_id = chat_id WHERE users.id = user_id;
+END IF;
+RETURN QUERY
+SELECT players.game_id, users.waiting_for_response FROM players, users WHERE players.user_id = get_game_id.user_id AND players.user_id = users.id;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION get_player_scores(game_id char(5)) RETURNS TABLE(display_name varchar(64), points text) AS $$
@@ -291,7 +298,7 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE OR REPLACE FUNCTION is_player_in_game(user_id integer, game_id char(5)) RETURNS boolean AS $$
 DECLARE num int;
 BEGIN
-SELECT COUNT(*) INTO num FROM players, games WHERE players.game_id = game_id AND players.user_id = user_id;
+SELECT COUNT(*) INTO num FROM players, games WHERE players.game_id = is_player_in_game.game_id AND players.user_id = is_player_in_game.user_id;
 RETURN (num != 0);
 END;
 $$ LANGUAGE plpgsql VOLATILE;

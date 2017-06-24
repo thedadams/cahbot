@@ -14,8 +14,8 @@ import (
 // HandleUpdate is the starting point for handling an update from chat.
 func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
 	bot.AddUserToDatabase(update.Message.From, update.Message.Chat.ID)
-	GameID, Response, err := GetGameID(update.Message.From.ID, bot.DBConn)
-	messageType := bot.DetectKindMessageReceived(update.Message)
+	GameID, Response, err := GetGameID(update.Message.From.ID, update.Message.Chat.ID, bot.DBConn)
+	messageType := bot.DetectKindMessageReceived(update)
 	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
 	if messageType == "command" {
 		bot.ProccessCommand(update.Message, GameID)
@@ -57,7 +57,7 @@ func (bot *CAHBot) SendToGame(GameID, message string) {
 		log.Printf("ERROR: %v", err)
 		return
 	}
-	rows, err := bot.DBConn.Query("SELECT get_userids_for_game($1)", GameID)
+	rows, err := bot.DBConn.Query("SELECT get_user_ids_for_game($1)", GameID)
 	defer rows.Close()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
@@ -121,51 +121,54 @@ func (bot *CAHBot) SendActionFailedMessage(ChatID int64) {
 }
 
 // DetectKindMessageReceived detects the kind of message we received from the user.
-func (bot *CAHBot) DetectKindMessageReceived(m *tgbotapi.Message) string {
+func (bot *CAHBot) DetectKindMessageReceived(u *tgbotapi.Update) string {
 	log.Printf("Detecting the type of message received")
-	if m.Text != "" {
-		if m.IsCommand() {
+	if u.CallbackQuery != nil {
+		return strings.Split(u.CallbackQuery.Data, "::")[0]
+	}
+	if u.Message.Text != "" {
+		if u.Message.IsCommand() {
 			return "command"
 		}
 		return "message"
 	}
-	if len(*m.Photo) != 0 {
+	if len(*u.Message.Photo) != 0 {
 		return "photo"
 	}
-	if m.Audio.FileID != "" {
+	if u.Message.Audio.FileID != "" {
 		return "audio"
 	}
-	if m.Video.FileID != "" {
+	if u.Message.Video.FileID != "" {
 		return "video"
 	}
-	if m.Document.FileID != "" {
+	if u.Message.Document.FileID != "" {
 		return "document"
 	}
-	if m.Sticker.FileID != "" {
+	if u.Message.Sticker.FileID != "" {
 		return "sticker"
 	}
-	if len(*m.NewChatMembers) != 0 {
+	if len(*u.Message.NewChatMembers) != 0 {
 		return "newParticipant"
 	}
-	if m.LeftChatMember.ID != 0 {
+	if u.Message.LeftChatMember.ID != 0 {
 		return "byeParticipant"
 	}
-	if m.NewChatTitle != "" {
+	if u.Message.NewChatTitle != "" {
 		return "newChatTitle"
 	}
-	if len(*m.NewChatPhoto) != 0 {
+	if len(*u.Message.NewChatPhoto) != 0 {
 		return "newChatPhoto"
 	}
-	if m.DeleteChatPhoto {
+	if u.Message.DeleteChatPhoto {
 		return "deleteChatPhoto"
 	}
-	if m.GroupChatCreated {
+	if u.Message.GroupChatCreated {
 		return "newGroupChat"
 	}
-	if m.Contact.UserID != 0 || m.Contact.FirstName != "" || m.Contact.LastName != "" {
+	if u.Message.Contact.UserID != 0 || u.Message.Contact.FirstName != "" || u.Message.Contact.LastName != "" {
 		return "contact"
 	}
-	if m.Location.Longitude != 0 && m.Location.Latitude != 0 {
+	if u.Message.Location.Longitude != 0 && u.Message.Location.Latitude != 0 {
 		return "location"
 	}
 	return "undetermined"
@@ -446,10 +449,10 @@ func (bot *CAHBot) AddUserToDatabase(User *tgbotapi.User, ChatID int64) bool {
 		log.Printf("Cannot connect to the database.")
 		return false
 	}
-	_ = tx.QueryRow("SELECT does_user_exist($1)", User.ID).Scan(&exists)
+	_ = tx.QueryRow("SELECT does_user_exist($1::int)", User.ID).Scan(&exists)
 	if !exists {
 		log.Printf("Adding user with ID %v to the database.", User.ID)
-		_, err = tx.Exec("SELECT add_user($1,$2,$3,$4,$5)", User.ID, User.FirstName, User.LastName, User.UserName, User.String())
+		_, err = tx.Exec("SELECT add_user($1, $2, $3, $4, $5, $6)", User.ID, ChatID, User.FirstName, User.LastName, User.UserName, User.String())
 		if err != nil {
 			log.Printf("ERROR: %v", err)
 			bot.SendActionFailedMessage(ChatID)
@@ -708,15 +711,17 @@ func (bot *CAHBot) ListCardsForUserWithMessage(GameID string, ChatID int64, text
 	}
 	response = response[1 : len(response)-1]
 	message := tgbotapi.NewMessage(ChatID, text)
-	cards := make([][]tgbotapi.KeyboardButton, len(strings.Split(response, ",")))
+	cards := make([][]tgbotapi.InlineKeyboardButton, len(strings.Split(response, ",")))
 	for i := range cards {
-		cards[i] = make([]tgbotapi.KeyboardButton, 1)
+		cards[i] = make([]tgbotapi.InlineKeyboardButton, 1)
 	}
 	for i := 0; i < len(strings.Split(response, ",")); i++ {
 		tmp, _ := strconv.Atoi(strings.Split(response, ",")[i])
-		cards[i][0] = tgbotapi.KeyboardButton{Text: html.UnescapeString(bot.AllAnswerCards[tmp].Text), RequestContact: false, RequestLocation: false}
+		answerText := html.UnescapeString(bot.AllAnswerCards[tmp].Text)
+		callbackData := "answer::" + answerText
+		cards[i][0] = tgbotapi.InlineKeyboardButton{Text: answerText, CallbackData: &callbackData}
 	}
-	message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{Keyboard: cards, ResizeKeyboard: true, OneTimeKeyboard: true, Selective: false}
+	message.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{InlineKeyboard: cards}
 	bot.Send(message)
 }
 
