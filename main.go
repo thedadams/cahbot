@@ -69,6 +69,11 @@ func main() {
 	}()
 
 	for update := range updates {
-		go bot.HandleUpdate(&update)
+		messageType := bot.DetectKindMessageReceived(update)
+		if messageType == "callback" {
+			go bot.HandleUpdate(update.CallbackQuery.From, update.CallbackQuery.Message, update.CallbackQuery, messageType)
+		} else {
+			go bot.HandleUpdate(update.Message.From, update.Message, update.CallbackQuery, messageType)
+		}
 	}
 }

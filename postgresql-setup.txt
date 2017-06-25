@@ -247,15 +247,16 @@ SELECT display_name FROM users WHERE id = user_id;
 $$ LANGUAGE SQL VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION get_game_id(user_id integer, chat_id bigint) RETURNS TABLE(game_id character(5), response varchar(8)) AS $$
+CREATE OR REPLACE FUNCTION get_game_id(user_id integer, chat_id bigint) RETURNS character(5) AS $$
 DECLARE c_id bigint;
+DECLARE g_id character(5);
 BEGIN
 SELECT users.chat_id INTO c_id FROM users WHERE users.id = get_game_id.user_id;
 IF c_id != chat_id THEN
 UPDATE users SET users.chat_id = chat_id WHERE users.id = user_id;
 END IF;
-RETURN QUERY
-SELECT players.game_id, users.waiting_for_response FROM players, users WHERE players.user_id = get_game_id.user_id AND players.user_id = users.id;
+SELECT players.game_id INTO g_id FROM players, users WHERE players.user_id = get_game_id.user_id AND players.user_id = users.id;
+RETURN g_id;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -280,6 +281,12 @@ $$ LANGUAGE SQL VOLATILE;
 
 CREATE OR REPLACE FUNCTION get_user_status(user_id integer) RETURNS text as $$
 SELECT waiting_for_response FROM users WHERE id = user_id;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION get_chat_ids_for_game(game_id char(5)) RETURNS SETOF bigint
+AS $$
+SELECT users.chat_id FROM players, users WHERE players.game_id = game_id AND users.id = players.user_id;
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -332,15 +339,15 @@ DECLARE czar_array int[];
 DECLARE czar int;
 BEGIN
 RETURN QUERY
-SELECT users.display_name, users.points::text FROM players, games, users WHERE games.id = players.game_id AND players.user_id = user_id;
-SELECT czar_order, current_czar INTO czar_array, czar FROM games, players WHERE games.id = players.game_id AND players.user_id = user_id;
+SELECT users.display_name, users.points::text FROM players, games, users WHERE games.id = players.game_id AND players.user_id = remove_player_from_game.user_id;
+SELECT czar_order, current_czar INTO czar_array, czar FROM games, players WHERE games.id = players.game_id AND players.user_id = remove_player_from_game.user_id;
 IF czar = user_id THEN
     czar := czar_array[idx(czar_array, user_id) + 1];
 END IF;
 czar_array := czar_array - user_id;
-UPDATE games SET (current_czar, czar_order) = (czar, czar_array) FROM players WHERE games.id = players.game_id AND players.user_id = user_id;
-UPDATE users SET (cards_in_hand, waiting_for_response, current_answer) = ('{}', '', '') FROM players WHERE players.user_id = user_id;
-DELETE FROM players WHERE players.user_id = user_id;
+UPDATE games SET (current_czar, czar_order) = (czar, czar_array) FROM players WHERE games.id = players.game_id AND players.user_id = remove_player_from_game.user_id;
+UPDATE users SET (cards_in_hand, waiting_for_response, current_answer) = ('{}', '', '') FROM players WHERE players.user_id = remove_player_from_game.user_id;
+DELETE FROM players WHERE players.user_id = remove_player_from_game.user_id;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 

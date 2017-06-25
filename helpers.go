@@ -96,20 +96,19 @@ func GameScores(GameID string, db *sql.DB) string {
 }
 
 // GetGameID gets the GameID for a player.
-func GetGameID(UserID int, ChatID int64, db *sql.DB) (string, string, error) {
+func GetGameID(UserID int, ChatID int64, db *sql.DB) (string, error) {
 	var GameID string
 	tx, err := db.Begin()
 	defer tx.Rollback()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-		return "", "", err
+		return "", err
 	}
 	err = tx.QueryRow("SELECT get_game_id($1, $2)", UserID, ChatID).Scan(&GameID)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	GameID = GameID[1 : len(GameID)-1]
-	return strings.Split(GameID, ",")[0], strings.Split(GameID, ",")[1], err
+	return GameID, err
 }
 
 // GetRandomID creates a random string for a Game ID.
@@ -142,13 +141,13 @@ func HandleCzarResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, R
 // HandlePlayerResponse handles a response that is not a command from a player.
 func HandlePlayerResponse(bot *CAHBot, GameID string, Message *tgbotapi.Message, CheckDigit int, ThirdArg string, Handler func(int64, string, string)) {
 	if CheckDigit == -1 {
-		log.Printf("The text we received was not a valid answer.  We assume it was a message to the game so we are forwarding it.")
-		bot.ForwardMessageToGame(Message, GameID)
-	} else if CheckDigit == 0 {
-		log.Printf("GameID: %v - We encountered an error when trying to validate the player's choice.  We are reporting that error to the player with ID %v.", GameID, Message.From.ID)
+		log.Printf("The text we received was not a valid answer.")
 		bot.SendActionFailedMessage(Message.Chat.ID)
+	} else if CheckDigit == 0 {
 		log.Printf("GameID: %v - Asking the player with ID %v to try again...", GameID, Message.From.ID)
-		bot.ListCardsForUserWithMessage(GameID, Message.Chat.ID, "Please try picking an answer again.")
+		message := tgbotapi.NewEditMessageText(Message.Chat.ID, Message.MessageID, "We encountered an error. Please try picking an answer again.")
+		message.ReplyMarkup = SetupInlineKeyboard(bot.Settings, 1)
+		bot.Send(message)
 	} else {
 		Handler(Message.Chat.ID, GameID, ThirdArg)
 	}
@@ -163,10 +162,26 @@ func LastCharactorIsPunctuation(TheString string) bool {
 	return false
 }
 
+// SetupInlineKeyboard builds the inline keyboard to change a setting.
+func SetupInlineKeyboard(ButtonData []Setting, NumCols int) *tgbotapi.InlineKeyboardMarkup {
+	// Settings that need to support changing: Mystery Player, Trade In Cards, Number of Cards to Trade In, Number of Cards In Hand, Pick Worst Also, Points To Win.
+	settingIndex := 0
+	numSettings := len(ButtonData)
+	settingsKeyboard := make([][]tgbotapi.InlineKeyboardButton, (len(ButtonData)+NumCols-1)/NumCols)
+	for i := 0; i < len(settingsKeyboard) && settingIndex < numSettings; i++ {
+		settingsKeyboard[i] = make([]tgbotapi.InlineKeyboardButton, NumCols)
+		for j := 0; j < NumCols && settingIndex < numSettings; j++ {
+			settingsKeyboard[i][j] = tgbotapi.InlineKeyboardButton{Text: ButtonData[settingIndex].Name, CallbackData: &ButtonData[settingIndex].CData}
+			settingIndex++
+		}
+	}
+	return &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: settingsKeyboard}
+}
+
 // SettingIsValid checks to see if we received valid setting from the user.
 func SettingIsValid(bot *CAHBot, Setting string) int {
 
-	return -1
+	return 0
 }
 
 // ShuffleAnswers shuffles the answers so they don't come out in the same order every time.

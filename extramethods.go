@@ -12,39 +12,39 @@ import (
 )
 
 // HandleUpdate is the starting point for handling an update from chat.
-func (bot *CAHBot) HandleUpdate(update *tgbotapi.Update) {
-	bot.AddUserToDatabase(update.Message.From, update.Message.Chat.ID)
-	GameID, Response, err := GetGameID(update.Message.From.ID, update.Message.Chat.ID, bot.DBConn)
-	messageType := bot.DetectKindMessageReceived(update)
-	log.Printf("[%s] Message type: %s", update.Message.From.UserName, messageType)
+func (bot *CAHBot) HandleUpdate(User *tgbotapi.User, Message *tgbotapi.Message, Callback *tgbotapi.CallbackQuery, messageType string) {
+	bot.AddUserToDatabase(User, int64(User.ID))
+	GameID, err := GetGameID(User.ID, int64(User.ID), bot.DBConn)
+	log.Printf("Message from %s of type %s with game ID %s", User.String(), messageType, GameID)
 	if messageType == "command" {
-		bot.ProccessCommand(update.Message, GameID)
-	} else if messageType == "message" && Response != "" {
-		log.Printf("We received a message from %v, but are expecting a response for %v.", update.Message.From.ID, Response)
-		switch Response {
-		case "settings":
+		bot.ProccessCommand(Message, GameID)
+	} else if messageType == "callback" {
+		log.Printf("We received a callback from %v.", User.ID)
+		callbackType := strings.Split(Callback.Data, "::")[:1]
+		switch callbackType[0] {
+		case "ChangeSetting":
 			// Handle the change of a setting here.
-			HandlePlayerResponse(bot, GameID, update.Message, SettingIsValid(bot, update.Message.Text), update.Message.Text, bot.ChangeGameSettings)
-		case "answer":
+			HandlePlayerResponse(bot, GameID, Message, SettingIsValid(bot, Message.Text), Message.Text, bot.ChangeGameSettings)
+		case "Answer":
 			// Handle the receipt of an answer here.
-			answer := AnswerIsValid(bot, update.Message.Chat.ID, update.Message.Text)
-			HandlePlayerResponse(bot, GameID, update.Message, answer, strconv.Itoa(answer), bot.ReceivedAnswerFromPlayer)
-		case "tradeInCard":
+			answer := AnswerIsValid(bot, int64(User.ID), Message.Text)
+			HandlePlayerResponse(bot, GameID, Message, answer, strconv.Itoa(answer), bot.ReceivedAnswerFromPlayer)
+		case "TradeInCard":
 			// Handle the trading in of a card here.
-			answer := AnswerIsValid(bot, update.Message.Chat.ID, update.Message.Text)
-			HandlePlayerResponse(bot, GameID, update.Message, answer, strconv.Itoa(answer), bot.TradeInCard)
-		case "czarbest":
+			answer := AnswerIsValid(bot, int64(User.ID), Message.Text)
+			HandlePlayerResponse(bot, GameID, Message, answer, strconv.Itoa(answer), bot.TradeInCard)
+		case "CzarBest":
 			// Handle the receipt of a czar picking best answer here.
-			HandleCzarResponse(bot, GameID, update.Message, Response, CzarChoiceIsValid(bot, GameID, update.Message.Text))
-		case "czarworst":
+			HandleCzarResponse(bot, GameID, Message, callbackType[0], CzarChoiceIsValid(bot, GameID, Message.Text))
+		case "CzaarWorst":
 			// Handle the receipt of a czar picking the worst answer here.
-			HandleCzarResponse(bot, GameID, update.Message, Response, CzarChoiceIsValid(bot, GameID, update.Message.Text))
+			HandleCzarResponse(bot, GameID, Message, callbackType[0], CzarChoiceIsValid(bot, GameID, Message.Text))
 		}
 	} else if messageType == "message" || messageType == "photo" || messageType == "video" || messageType == "audio" || messageType == "contact" || messageType == "document" || messageType == "location" || messageType == "sticker" {
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "It seems that you are not involved in any game so your message fell on deaf ears."))
+			bot.Send(tgbotapi.NewMessage(int64(User.ID), "It seems that you are not involved in any game so your message fell on deaf ears."))
 		} else {
-			bot.ForwardMessageToGame(update.Message, GameID)
+			bot.ForwardMessageToGame(Message, GameID)
 		}
 	}
 }
@@ -85,7 +85,7 @@ func (bot *CAHBot) ForwardMessageToGame(m *tgbotapi.Message, GameID string) {
 		bot.SendActionFailedMessage(m.Chat.ID)
 		return
 	}
-	rows, err := bot.DBConn.Query("SELECT get_userids_for_game($1)", GameID)
+	rows, err := bot.DBConn.Query("SELECT get_chat_ids_for_game($1)", GameID)
 	defer rows.Close()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
@@ -121,10 +121,10 @@ func (bot *CAHBot) SendActionFailedMessage(ChatID int64) {
 }
 
 // DetectKindMessageReceived detects the kind of message we received from the user.
-func (bot *CAHBot) DetectKindMessageReceived(u *tgbotapi.Update) string {
+func (bot *CAHBot) DetectKindMessageReceived(u tgbotapi.Update) string {
 	log.Printf("Detecting the type of message received")
 	if u.CallbackQuery != nil {
-		return strings.Split(u.CallbackQuery.Data, "::")[0]
+		return "callback"
 	}
 	if u.Message.Text != "" {
 		if u.Message.IsCommand() {
@@ -179,7 +179,7 @@ func (bot *CAHBot) DetectKindMessageReceived(u *tgbotapi.Update) string {
 func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	log.Printf("Processing command....")
 	// Get the command.
-	switch strings.ToLower(strings.Replace(strings.Fields(m.Text)[0], "/", "", 1)) {
+	switch strings.Replace(strings.Fields(m.Text)[0], "/", "", 1) {
 	case "start":
 		bot.Send(tgbotapi.NewMessage(m.Chat.ID, "Welcome to Cards Against Humanity for Telegram.  To create a new game, use the command /create.  If you create a game, you will be given a 5 character id you can share with friends so they can join you.  You can also join a game using the /join <id> command where the <id> is replaced with a game id created by someone else.  To see all available commands, use /help."))
 		bot.Send(tgbotapi.NewMessage(m.Chat.ID, "While you are in a game, any (non-command) message you send to me will be automatically forwarded to everyone else in the game so you're all in the loop."))
@@ -318,50 +318,10 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 				return
 			}
 			bot.SendGameSettings(GameID, m.Chat.ID)
-			_, err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, "settings", "")
-			if err != nil {
-				log.Printf("ERROR: %v", err)
-				bot.SendActionFailedMessage(m.Chat.ID)
-				return
-			}
 			tx.Commit()
-			// Settings that need to support changing: Mystery Player, Trade In Cards, Number of Cards to Trade In, Number of Cards In Hand, Pick Worst Also, Points To Win.
-			//settingsKeyboard := make([][]string, 1)
-			//settingsKeyboard[0] = make([]string, 1)
-			//settingsKeyboard[0][0] = "Pick worst card also"
-			//settingsKeyboard[1] = make([]string, 1)
-			//settingsKeyboard[1][0] = "Trade in cards at the end of every round"
-			//settingsKeyboard[2] = make([]string, 1)
-			//settingsKeyboard[2][0] = "Number of cards to trade in"
-			//settingsKeyboard[3] = make([]string, 1)
-			//settingsKeyboard[3][0] = "Number of cards in hand"
-			//settingsKeyboard[4] = make([]string, 1)
-			//settingsKeyboard[4][0] = "Number of points to win"
-			//settingsKeyboard[5] = make([]string, 1)
-			//settingsKeyboard[5][0] = "Mystery player"
-			message := tgbotapi.NewMessage(m.Chat.ID, "Which setting would you like to change?  You can choose one of the following (case insensitive):")
-			//message.ReplyMarkup = tgbotapi.ReplyKeyboardMarkup{settingsKeyboard, true, true, false}
+			message := tgbotapi.NewMessage(m.Chat.ID, "Which setting would you like to change?")
+			message.ReplyMarkup = SetupInlineKeyboard(bot.Settings, 1)
 			bot.Send(message)
-		} else {
-			bot.SendNoGameMessage(m.Chat.ID)
-		}
-	case "cancel":
-		if GameID != "" {
-			tx, err := bot.DBConn.Begin()
-			defer tx.Rollback()
-			if err != nil {
-				log.Printf("ERROR: %v", err)
-				bot.SendActionFailedMessage(m.Chat.ID)
-				return
-			}
-			_, err = tx.Exec("SELECT update_user_status($1, $2, $3)", m.From.ID, "", "")
-			if err != nil {
-				log.Printf("ERROR: %v", err)
-				bot.SendActionFailedMessage(m.Chat.ID)
-				return
-			}
-			tx.Commit()
-			bot.Send(tgbotapi.NewMessage(m.Chat.ID, "Action canceled."))
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
