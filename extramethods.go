@@ -265,7 +265,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.Send(tgbotapi.NewMessage(m.Chat.ID, "You did not enter a game id.  Try again with the format /join <id>."))
 		}
-	case "gameID":
+	case "gameid":
 		if GameID != "" {
 			bot.Send(tgbotapi.NewMessage(m.Chat.ID, "The game you are currently playing has id "+GameID+".  Others can join your game by using the command '/join "+GameID+"'."))
 		} else {
@@ -283,7 +283,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
-	case "myCards":
+	case "cards":
 		if GameID != "" {
 			bot.ListCardsForUserWithMessage(GameID, m.Chat.ID, "Your cards are listed in the keyboard area.")
 		} else {
@@ -325,7 +325,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 		} else {
 			bot.SendNoGameMessage(m.Chat.ID)
 		}
-	case "whoIsCzar":
+	case "czar":
 		if GameID != "" {
 			var czar string
 			tx, err := bot.DBConn.Begin()
