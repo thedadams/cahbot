@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"html"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -20,11 +21,11 @@ func (bot *CAHBot) HandleUpdate(User *tgbotapi.User, Message *tgbotapi.Message, 
 		bot.ProccessCommand(Message, GameID)
 	} else if messageType == "callback" {
 		log.Printf("We received a callback from %v.", User.ID)
-		callbackType := strings.Split(Callback.Data, "::")[:1]
+		callbackType := strings.Split(Callback.Data, "::")
 		switch callbackType[0] {
 		case "ChangeSetting":
 			// Handle the change of a setting here.
-			HandlePlayerResponse(bot, GameID, Message, SettingIsValid(bot, Message.Text), Message.Text, bot.ChangeGameSettings)
+			HandlePlayerResponse(bot, GameID, Message, SettingIsValid(bot, Message.Text), Callback.Data, bot.ChangeGameSettings)
 		case "Answer":
 			// Handle the receipt of an answer here.
 			answer := AnswerIsValid(bot, int64(User.ID), Message.Text)
@@ -36,7 +37,7 @@ func (bot *CAHBot) HandleUpdate(User *tgbotapi.User, Message *tgbotapi.Message, 
 		case "CzarBest":
 			// Handle the receipt of a czar picking best answer here.
 			HandleCzarResponse(bot, GameID, Message, callbackType[0], CzarChoiceIsValid(bot, GameID, Message.Text))
-		case "CzaarWorst":
+		case "CzarWorst":
 			// Handle the receipt of a czar picking the worst answer here.
 			HandleCzarResponse(bot, GameID, Message, callbackType[0], CzarChoiceIsValid(bot, GameID, Message.Text))
 		}
@@ -348,7 +349,7 @@ func (bot *CAHBot) ProccessCommand(m *tgbotapi.Message, GameID string) {
 	case "logging":
 		if len(strings.Fields(m.Text)) > 1 {
 			hasher := sha512.New()
-			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), AppPass) {
+			if strings.EqualFold(base64.URLEncoding.EncodeToString(hasher.Sum([]byte(strings.Fields(m.Text)[1]))), os.Getenv("APPPASS")) {
 				bot.Debug = !bot.Debug
 				log.Printf("Debugging/verbose logging has been turned to %v.", bot.Debug)
 			}

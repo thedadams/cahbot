@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +12,7 @@ import (
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	bot, err := NewCAHBot(Token)
+	bot, err := NewCAHBot(os.Getenv("TOKEN"))
 	if err != nil {
 		log.Panic(err)
 	}

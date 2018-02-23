@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"os"
 
 	_ "github.com/lib/pq"
 	"github.com/thedadams/telegram-bot-api"
@@ -20,7 +21,7 @@ type CAHBot struct {
 
 // NewCAHBot creates a new CAHBot.
 func NewCAHBot(token string) (*CAHBot, error) {
-	GenericBot, err := tgbotapi.NewBotAPI(token)
+	GenericBot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	// Need to get the card data
 	var AllQuestionCards []QuestionCard
 	err = json.Unmarshal(AllQuestions, &AllQuestionCards)
@@ -37,7 +38,7 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	if err != nil {
 		log.Printf("%v", err)
 	}
-	db, err := sql.Open("postgres", "sslmode=disable user=cahbot dbname=cahgames password="+DBPass)
+	db, err := sql.Open("postgres", "sslmode=disable user=cahbot dbname=cahgames password="+os.Getenv("APPPASS"))
 	if err != nil {
 		log.Fatal(err)
 	}
