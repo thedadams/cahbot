@@ -3,6 +3,18 @@
 	"ignore": "test",
 	"package": [
 		{
+			"checksumSHA1": "Wh2YCiWY/VIAEEQGLS7sMB9isXk=",
+			"path": "github.com/lib/pq",
+			"revision": "8837942c3e09574accbc5f150e2c5e057189cace",
+			"revisionTime": "2017-06-03T22:54:54Z"
+		},
+		{
+			"checksumSHA1": "Gk3jTNQ5uGDUE0WMJFWcYz9PMps=",
+			"path": "github.com/lib/pq/oid",
+			"revision": "8837942c3e09574accbc5f150e2c5e057189cace",
+			"revisionTime": "2017-06-03T22:54:54Z"
+		},
+		{
 			"checksumSHA1": "t8jzPFIv4DNACv+cuZoigNmjPLQ=",
 			"path": "github.com/technoweenie/multipartstreamer",
 			"revision": "a90a01d73ae432e2611d178c18367fbaa13e0154",
