@@ -1,0 +1,19 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "t8jzPFIv4DNACv+cuZoigNmjPLQ=",
+			"path": "github.com/technoweenie/multipartstreamer",
+			"revision": "a90a01d73ae432e2611d178c18367fbaa13e0154",
+			"revisionTime": "2013-10-20T00:18:33Z"
+		},
+		{
+			"checksumSHA1": "gYYadjk6K6lATxfJDq06wLjcBXI=",
+			"path": "github.com/thedadams/telegram-bot-api",
+			"revision": "6d61792e0802a0aaa0ef52f491e0ac8a7f78f8e3",
+			"revisionTime": "2018-02-23T20:25:32Z"
+		}
+	],
+	"rootPath": "github.com/thedadams/cahbot"
+}
