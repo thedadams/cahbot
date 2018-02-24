@@ -27,3 +27,4 @@ secrets.go
 separate.py
 testcah.go
 *.log
+.env
