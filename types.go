@@ -22,25 +22,32 @@ type CAHBot struct {
 // NewCAHBot creates a new CAHBot.
 func NewCAHBot(token string) (*CAHBot, error) {
 	GenericBot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
+	if err != nil {
+		log.Printf("Error initializing bot: %v", err)
+		return nil, err
+	}
 	// Need to get the card data
 	var AllQuestionCards []QuestionCard
 	err = json.Unmarshal(AllQuestions, &AllQuestionCards)
 	if err != nil {
 		log.Printf("%v", err)
+		return nil, err
 	}
 	var AllAnswerCards []AnswerCard
 	err = json.Unmarshal(AllAnswers, &AllAnswerCards)
 	if err != nil {
 		log.Printf("%v", err)
+		return nil, err
 	}
 	var Settings []Setting
 	err = json.Unmarshal(AllSettings, &Settings)
 	if err != nil {
 		log.Printf("%v", err)
+		return nil, err
 	}
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%v", err)
 	}
 	return &CAHBot{GenericBot, db, AllQuestionCards, AllAnswerCards, Settings}, err
 }
