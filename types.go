@@ -38,7 +38,7 @@ func NewCAHBot(token string) (*CAHBot, error) {
 	if err != nil {
 		log.Printf("%v", err)
 	}
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL")+"user=cahbot dbname=cahgames password="+os.Getenv("APPPASS"))
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
